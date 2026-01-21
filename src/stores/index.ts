@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { supabase } from '@/lib/supabase';
 import type {
   Objective,
   TimeEntry,
@@ -54,16 +55,19 @@ export const useObjectivesStore = create<ObjectivesState>()(
   )
 );
 
-// === EXPENSES STORE ===
+// === EXPENSES STORE (avec Supabase) ===
 interface ExpensesState {
   expenses: Expense[];
   incomes: Income[];
   categories: ExpenseCategory[];
-  addExpense: (expense: Expense) => void;
-  removeExpense: (id: string) => void;
-  addIncome: (income: Income) => void;
-  removeIncome: (id: string) => void;
-  updateIncome: (id: string, updates: Partial<Income>) => void;
+  loading: boolean;
+  fetchExpenses: () => Promise<void>;
+  fetchIncomes: () => Promise<void>;
+  addExpense: (expense: Expense) => Promise<void>;
+  removeExpense: (id: string) => Promise<void>;
+  addIncome: (income: Income) => Promise<void>;
+  removeIncome: (id: string) => Promise<void>;
+  updateIncome: (id: string, updates: Partial<Income>) => Promise<void>;
   addCategory: (category: ExpenseCategory) => void;
   removeCategory: (id: string) => void;
 }
@@ -73,6 +77,7 @@ export const useExpensesStore = create<ExpensesState>()(
     (set) => ({
       expenses: [],
       incomes: [],
+      loading: false,
       categories: [
         { id: '1', name: 'Soirée', color: '#ef4444' },
         { id: '2', name: 'Nourriture', color: '#22c55e' },
@@ -80,24 +85,108 @@ export const useExpensesStore = create<ExpensesState>()(
         { id: '4', name: 'Business', color: '#8b5cf6' },
         { id: '5', name: 'Bourse', color: '#f59e0b' },
       ],
-      addExpense: (expense) =>
-        set((state) => ({ expenses: [...state.expenses, expense] })),
-      removeExpense: (id) =>
-        set((state) => ({
-          expenses: state.expenses.filter((e) => e.id !== id),
-        })),
-      addIncome: (income) =>
-        set((state) => ({ incomes: [...state.incomes, income] })),
-      removeIncome: (id) =>
-        set((state) => ({
-          incomes: state.incomes.filter((i) => i.id !== id),
-        })),
-      updateIncome: (id, updates) =>
-        set((state) => ({
-          incomes: state.incomes.map((i) =>
-            i.id === id ? { ...i, ...updates } : i
-          ),
-        })),
+
+      fetchExpenses: async () => {
+        set({ loading: true });
+        const { data, error } = await supabase
+          .from('expenses')
+          .select('*')
+          .order('date', { ascending: false });
+        if (!error && data) {
+          const expenses: Expense[] = data.map((row) => ({
+            id: row.id,
+            date: row.date,
+            categoryId: row.category_id,
+            amount: row.amount,
+            description: row.description,
+          }));
+          set({ expenses, loading: false });
+        } else {
+          set({ loading: false });
+        }
+      },
+
+      fetchIncomes: async () => {
+        set({ loading: true });
+        const { data, error } = await supabase
+          .from('incomes')
+          .select('*')
+          .order('month', { ascending: false });
+        if (!error && data) {
+          const incomes: Income[] = data.map((row) => ({
+            id: row.id,
+            month: row.month,
+            amount: row.amount,
+            description: row.description,
+          }));
+          set({ incomes, loading: false });
+        } else {
+          set({ loading: false });
+        }
+      },
+
+      addExpense: async (expense) => {
+        const { error } = await supabase.from('expenses').insert({
+          id: expense.id,
+          date: expense.date,
+          category_id: expense.categoryId,
+          amount: expense.amount,
+          description: expense.description,
+        });
+        if (!error) {
+          set((state) => ({ expenses: [...state.expenses, expense] }));
+        }
+      },
+
+      removeExpense: async (id) => {
+        const { error } = await supabase.from('expenses').delete().eq('id', id);
+        if (!error) {
+          set((state) => ({
+            expenses: state.expenses.filter((e) => e.id !== id),
+          }));
+        }
+      },
+
+      addIncome: async (income) => {
+        const { error } = await supabase.from('incomes').insert({
+          id: income.id,
+          month: income.month,
+          amount: income.amount,
+          description: income.description,
+        });
+        if (!error) {
+          set((state) => ({ incomes: [...state.incomes, income] }));
+        }
+      },
+
+      removeIncome: async (id) => {
+        const { error } = await supabase.from('incomes').delete().eq('id', id);
+        if (!error) {
+          set((state) => ({
+            incomes: state.incomes.filter((i) => i.id !== id),
+          }));
+        }
+      },
+
+      updateIncome: async (id, updates) => {
+        const dbUpdates: Record<string, unknown> = {};
+        if (updates.month !== undefined) dbUpdates.month = updates.month;
+        if (updates.amount !== undefined) dbUpdates.amount = updates.amount;
+        if (updates.description !== undefined) dbUpdates.description = updates.description;
+
+        const { error } = await supabase
+          .from('incomes')
+          .update(dbUpdates)
+          .eq('id', id);
+        if (!error) {
+          set((state) => ({
+            incomes: state.incomes.map((i) =>
+              i.id === id ? { ...i, ...updates } : i
+            ),
+          }));
+        }
+      },
+
       addCategory: (category) =>
         set((state) => ({ categories: [...state.categories, category] })),
       removeCategory: (id) =>

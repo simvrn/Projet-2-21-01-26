@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui';
 import { useExpensesStore } from '@/stores';
@@ -6,7 +7,12 @@ import { fr } from 'date-fns/locale';
 import { ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
 
 export function ExpensesPage() {
-  const { expenses, incomes, categories } = useExpensesStore();
+  const { expenses, incomes, categories, fetchExpenses, fetchIncomes } = useExpensesStore();
+
+  useEffect(() => {
+    fetchExpenses();
+    fetchIncomes();
+  }, [fetchExpenses, fetchIncomes]);
 
   const currentYear = new Date().getFullYear();
   const months = eachMonthOfInterval({

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { Button, Card, Modal, Input } from '@/components/ui';
@@ -19,8 +19,13 @@ export function ExpenseMonthPage() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#06b6d4');
 
-  const { expenses, incomes, categories, addExpense, removeExpense, addIncome, removeIncome, addCategory } =
+  const { expenses, incomes, categories, addExpense, removeExpense, addIncome, removeIncome, addCategory, fetchExpenses, fetchIncomes } =
     useExpensesStore();
+
+  useEffect(() => {
+    fetchExpenses();
+    fetchIncomes();
+  }, [fetchExpenses, fetchIncomes]);
 
   if (!month) return null;
 
