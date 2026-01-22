@@ -85,6 +85,55 @@ export interface Challenge {
   content: string;
 }
 
+// === CALENDAR ===
+export type CalendarEventType = 'task' | 'event' | 'meeting';
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string;
+  type: CalendarEventType;
+  date: string; // "YYYY-MM-DD"
+  startTime?: string; // "HH:mm"
+  endTime?: string; // "HH:mm"
+  allDay: boolean;
+  color: string;
+  completed?: boolean; // Pour les tâches
+  createdAt: string;
+}
+
+// === FINANCE ===
+export interface Stock {
+  id: string;
+  ticker: string; // Ex: "AAPL", "MSFT"
+  name: string;
+  quantity: number;
+  purchasePrice: number; // Prix unitaire en centimes
+  purchaseDate: string;
+  currentPrice?: number; // Prix actuel en centimes (API ou manuel)
+  lastUpdated?: string;
+  createdAt: string;
+}
+
+export interface Asset {
+  id: string;
+  name: string;
+  description?: string;
+  purchasePrice: number; // En centimes
+  currentValue: number; // Valeur estimée en centimes
+  purchaseDate?: string;
+  category?: string; // "Montre", "Voiture", "Art", etc.
+  createdAt: string;
+}
+
+export interface CashAccount {
+  id: string;
+  name: string; // "Compte courant", "Livret A", etc.
+  balance: number; // En centimes
+  currency: string; // "EUR", "USD"
+  createdAt: string;
+}
+
 // === NAVIGATION ===
 export interface NavItem {
   path: string;

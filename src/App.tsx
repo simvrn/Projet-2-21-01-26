@@ -8,6 +8,8 @@ import { FoodPage } from '@/features/food/FoodPage';
 import { BiographyPage } from '@/features/biography/BiographyPage';
 import { RoutinesPage } from '@/features/routines/RoutinesPage';
 import { ChallengesPage } from '@/features/challenges/ChallengesPage';
+import { CalendarPage } from '@/features/calendar/CalendarPage';
+import { FinancePage } from '@/features/finance/FinancePage';
 
 function App() {
   return (
@@ -21,6 +23,8 @@ function App() {
         <Route path="/biography" element={<BiographyPage />} />
         <Route path="/routines" element={<RoutinesPage />} />
         <Route path="/challenges" element={<ChallengesPage />} />
+        <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/finance" element={<FinancePage />} />
       </Routes>
     </Layout>
   );

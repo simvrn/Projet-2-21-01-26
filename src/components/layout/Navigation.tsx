@@ -6,11 +6,15 @@ import {
   Users,
   CheckSquare,
   Trophy,
+  Calendar,
+  TrendingUp,
 } from 'lucide-react';
 
 const navItems = [
   { path: '/objectives', label: 'Objectifs', icon: Target },
+  { path: '/calendar', label: 'Calendrier', icon: Calendar },
   { path: '/expenses', label: 'Dépenses', icon: Wallet },
+  { path: '/finance', label: 'Finance', icon: TrendingUp },
   { path: '/food', label: 'Nourriture', icon: UtensilsCrossed },
   { path: '/biography', label: 'Biographie', icon: Users },
   { path: '/routines', label: 'Routines', icon: CheckSquare },
