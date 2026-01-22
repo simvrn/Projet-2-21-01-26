@@ -4,12 +4,13 @@ import {
   startOfMonth,
   endOfMonth,
   eachDayOfInterval,
-  subDays,
   differenceInDays,
   isAfter,
   isBefore,
   isToday,
   getDay,
+  subDays,
+  addDays,
 } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -37,17 +38,4 @@ export const getDateRange = (startDate: Date, endDate: Date): Date[] => {
   return eachDayOfInterval({ start: startDate, end: endDate });
 };
 
-// Période: aujourd'hui -> 1er janvier 2027
-export const TARGET_END_DATE = new Date(2027, 0, 1);
-
-export const getDaysUntilTarget = (): number => {
-  return differenceInDays(TARGET_END_DATE, new Date());
-};
-
-export const getAllDaysUntilTarget = (): Date[] => {
-  const today = new Date();
-  if (isAfter(today, TARGET_END_DATE)) return [];
-  return eachDayOfInterval({ start: today, end: TARGET_END_DATE });
-};
-
-export { isToday, isBefore, isAfter, getDay, subDays, parseISO };
+export { isToday, isBefore, isAfter, getDay, subDays, addDays, differenceInDays, parseISO };

@@ -2,8 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '@/lib/supabase';
 import type {
-  Objective,
-  TimeEntry,
+  Goal,
   Expense,
   Income,
   ExpenseCategory,
@@ -19,43 +18,92 @@ import type {
   CashAccount,
 } from '@/types';
 
-// === OBJECTIVES STORE ===
-interface ObjectivesState {
-  objectives: Objective[];
-  timeEntries: TimeEntry[];
-  addObjective: (objective: Objective) => void;
-  removeObjective: (id: string) => void;
-  addTimeEntry: (entry: TimeEntry) => void;
-  removeTimeEntry: (id: string) => void;
-  updateTimeEntry: (id: string, entry: Partial<TimeEntry>) => void;
+// === GOALS STORE (avec Supabase) ===
+interface GoalsState {
+  goals: Goal[];
+  loading: boolean;
+  fetchGoals: () => Promise<void>;
+  addGoal: (goal: Goal) => Promise<void>;
+  updateGoal: (id: string, updates: Partial<Goal>) => Promise<void>;
+  removeGoal: (id: string) => Promise<void>;
 }
 
-export const useObjectivesStore = create<ObjectivesState>()(
+export const useGoalsStore = create<GoalsState>()(
   persist(
     (set) => ({
-      objectives: [],
-      timeEntries: [],
-      addObjective: (objective) =>
-        set((state) => ({ objectives: [...state.objectives, objective] })),
-      removeObjective: (id) =>
-        set((state) => ({
-          objectives: state.objectives.filter((o) => o.id !== id),
-          timeEntries: state.timeEntries.filter((e) => e.objectiveId !== id),
-        })),
-      addTimeEntry: (entry) =>
-        set((state) => ({ timeEntries: [...state.timeEntries, entry] })),
-      removeTimeEntry: (id) =>
-        set((state) => ({
-          timeEntries: state.timeEntries.filter((e) => e.id !== id),
-        })),
-      updateTimeEntry: (id, updates) =>
-        set((state) => ({
-          timeEntries: state.timeEntries.map((e) =>
-            e.id === id ? { ...e, ...updates } : e
-          ),
-        })),
+      goals: [],
+      loading: false,
+
+      fetchGoals: async () => {
+        set({ loading: true });
+        const { data, error } = await supabase
+          .from('goals')
+          .select('*')
+          .order('start_date', { ascending: false });
+        if (!error && data) {
+          const goals: Goal[] = data.map((row) => ({
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            image: row.image,
+            color: row.color,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            durationDays: row.duration_days,
+            status: row.status,
+            createdAt: row.created_at,
+          }));
+          set({ goals, loading: false });
+        } else {
+          set({ loading: false });
+        }
+      },
+
+      addGoal: async (goal) => {
+        const { error } = await supabase.from('goals').insert({
+          id: goal.id,
+          name: goal.name,
+          description: goal.description,
+          image: goal.image,
+          color: goal.color,
+          start_date: goal.startDate,
+          end_date: goal.endDate,
+          duration_days: goal.durationDays,
+          status: goal.status,
+          created_at: goal.createdAt,
+        });
+        if (!error) {
+          set((state) => ({ goals: [...state.goals, goal] }));
+        }
+      },
+
+      updateGoal: async (id, updates) => {
+        const dbUpdates: Record<string, unknown> = {};
+        if (updates.name !== undefined) dbUpdates.name = updates.name;
+        if (updates.description !== undefined) dbUpdates.description = updates.description;
+        if (updates.image !== undefined) dbUpdates.image = updates.image;
+        if (updates.color !== undefined) dbUpdates.color = updates.color;
+        if (updates.startDate !== undefined) dbUpdates.start_date = updates.startDate;
+        if (updates.endDate !== undefined) dbUpdates.end_date = updates.endDate;
+        if (updates.durationDays !== undefined) dbUpdates.duration_days = updates.durationDays;
+        if (updates.status !== undefined) dbUpdates.status = updates.status;
+
+        const { error } = await supabase.from('goals').update(dbUpdates).eq('id', id);
+        if (!error) {
+          set((state) => ({
+            goals: state.goals.map((g) => (g.id === id ? { ...g, ...updates } : g)),
+          }));
+        }
+      },
+
+      removeGoal: async (id) => {
+        const { error } = await supabase.from('goals').delete().eq('id', id);
+        if (!error) {
+          set((state) => ({ goals: state.goals.filter((g) => g.id !== id) }));
+        }
+      },
     }),
-    { name: 'objectives-storage' }
+    { name: 'goals-storage' }
   )
 );
 
@@ -279,58 +327,150 @@ export const usePersonsStore = create<PersonsState>()(
   )
 );
 
-// === ROUTINES STORE ===
+// === ROUTINES STORE (avec Supabase) ===
 interface RoutinesState {
   routines: Routine[];
   completions: RoutineCompletion[];
-  addRoutine: (routine: Routine) => void;
-  removeRoutine: (id: string) => void;
-  updateRoutine: (id: string, updates: Partial<Routine>) => void;
-  toggleCompletion: (routineId: string, date: string) => void;
+  loading: boolean;
+  fetchRoutines: () => Promise<void>;
+  fetchCompletions: () => Promise<void>;
+  addRoutine: (routine: Routine) => Promise<void>;
+  removeRoutine: (id: string) => Promise<void>;
+  updateRoutine: (id: string, updates: Partial<Routine>) => Promise<void>;
+  toggleCompletion: (routineId: string, date: string) => Promise<void>;
 }
 
 export const useRoutinesStore = create<RoutinesState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       routines: [],
       completions: [],
-      addRoutine: (routine) =>
-        set((state) => ({ routines: [...state.routines, routine] })),
-      removeRoutine: (id) =>
-        set((state) => ({
-          routines: state.routines.filter((r) => r.id !== id),
-          completions: state.completions.filter((c) => c.routineId !== id),
-        })),
-      updateRoutine: (id, updates) =>
-        set((state) => ({
-          routines: state.routines.map((r) =>
-            r.id === id ? { ...r, ...updates } : r
-          ),
-        })),
-      toggleCompletion: (routineId, date) =>
-        set((state) => {
-          const existing = state.completions.find(
-            (c) => c.routineId === routineId && c.date === date
-          );
-          if (existing) {
-            return {
+      loading: false,
+
+      fetchRoutines: async () => {
+        set({ loading: true });
+        const { data, error } = await supabase
+          .from('routines')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!error && data) {
+          const routines: Routine[] = data.map((row) => ({
+            id: row.id,
+            name: row.name,
+            frequency: row.frequency,
+            weekDay: row.week_day,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            createdAt: row.created_at,
+            active: row.active,
+          }));
+          set({ routines, loading: false });
+        } else {
+          set({ loading: false });
+        }
+      },
+
+      fetchCompletions: async () => {
+        const { data, error } = await supabase
+          .from('routine_completions')
+          .select('*');
+        if (!error && data) {
+          const completions: RoutineCompletion[] = data.map((row) => ({
+            id: row.id,
+            routineId: row.routine_id,
+            date: row.date,
+            completed: row.completed,
+          }));
+          set({ completions });
+        }
+      },
+
+      addRoutine: async (routine) => {
+        const { error } = await supabase.from('routines').insert({
+          id: routine.id,
+          name: routine.name,
+          frequency: routine.frequency,
+          week_day: routine.weekDay,
+          start_date: routine.startDate,
+          end_date: routine.endDate,
+          created_at: routine.createdAt,
+          active: routine.active,
+        });
+        if (!error) {
+          set((state) => ({ routines: [...state.routines, routine] }));
+        }
+      },
+
+      removeRoutine: async (id) => {
+        const { error } = await supabase.from('routines').delete().eq('id', id);
+        if (!error) {
+          // Also delete completions for this routine
+          await supabase.from('routine_completions').delete().eq('routine_id', id);
+          set((state) => ({
+            routines: state.routines.filter((r) => r.id !== id),
+            completions: state.completions.filter((c) => c.routineId !== id),
+          }));
+        }
+      },
+
+      updateRoutine: async (id, updates) => {
+        const dbUpdates: Record<string, unknown> = {};
+        if (updates.name !== undefined) dbUpdates.name = updates.name;
+        if (updates.frequency !== undefined) dbUpdates.frequency = updates.frequency;
+        if (updates.weekDay !== undefined) dbUpdates.week_day = updates.weekDay;
+        if (updates.startDate !== undefined) dbUpdates.start_date = updates.startDate;
+        if (updates.endDate !== undefined) dbUpdates.end_date = updates.endDate;
+        if (updates.active !== undefined) dbUpdates.active = updates.active;
+
+        const { error } = await supabase.from('routines').update(dbUpdates).eq('id', id);
+        if (!error) {
+          set((state) => ({
+            routines: state.routines.map((r) =>
+              r.id === id ? { ...r, ...updates } : r
+            ),
+          }));
+        }
+      },
+
+      toggleCompletion: async (routineId, date) => {
+        const existing = get().completions.find(
+          (c) => c.routineId === routineId && c.date === date
+        );
+
+        if (existing) {
+          // Update existing completion
+          const { error } = await supabase
+            .from('routine_completions')
+            .update({ completed: !existing.completed })
+            .eq('id', existing.id);
+          if (!error) {
+            set((state) => ({
               completions: state.completions.map((c) =>
                 c.id === existing.id ? { ...c, completed: !c.completed } : c
               ),
-            };
+            }));
           }
-          return {
-            completions: [
-              ...state.completions,
-              {
-                id: crypto.randomUUID(),
-                routineId,
-                date,
-                completed: true,
-              },
-            ],
+        } else {
+          // Create new completion
+          const newCompletion: RoutineCompletion = {
+            id: crypto.randomUUID(),
+            routineId,
+            date,
+            completed: true,
           };
-        }),
+          const { error } = await supabase.from('routine_completions').insert({
+            id: newCompletion.id,
+            routine_id: newCompletion.routineId,
+            date: newCompletion.date,
+            completed: newCompletion.completed,
+          });
+          if (!error) {
+            set((state) => ({
+              completions: [...state.completions, newCompletion],
+            }));
+          }
+        }
+      },
     }),
     { name: 'routines-storage' }
   )

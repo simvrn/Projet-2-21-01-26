@@ -1,15 +1,16 @@
-// === OBJECTIVES ===
-export interface TimeEntry {
-  id: string;
-  date: string; // ISO date "YYYY-MM-DD"
-  objectiveId: string;
-  minutes: number;
-}
+// === GOALS (Objectifs) ===
+export type GoalStatus = 'active' | 'completed' | 'paused';
 
-export interface Objective {
+export interface Goal {
   id: string;
   name: string;
+  description?: string;
+  image?: string; // Base64 ou URL
   color: string;
+  startDate: string; // "YYYY-MM-DD"
+  endDate?: string; // "YYYY-MM-DD" - calculé si durationDays fourni
+  durationDays?: number; // Durée en jours - calculé si endDate fourni
+  status: GoalStatus;
   createdAt: string;
 }
 
@@ -68,6 +69,8 @@ export interface Routine {
   name: string;
   frequency: 'daily' | 'weekly';
   weekDay?: number; // 0-6 si weekly
+  startDate?: string; // "YYYY-MM-DD" - date de début (optionnel)
+  endDate?: string; // "YYYY-MM-DD" - date de fin (optionnel)
   createdAt: string;
   active: boolean;
 }

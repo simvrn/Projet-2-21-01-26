@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Check, Trash2, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { Button, Card, Modal, Input } from '@/components/ui';
 import { useRoutinesStore } from '@/stores';
@@ -12,9 +12,13 @@ import {
   isSameDay,
   addWeeks,
   subWeeks,
+  parseISO,
+  isBefore,
+  isAfter,
 } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { toISODateString } from '@/utils/dates';
+
+const toISODateString = (date: Date): string => format(date, 'yyyy-MM-dd');
 
 export function RoutinesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -22,18 +26,42 @@ export function RoutinesPage() {
   const [newRoutineName, setNewRoutineName] = useState('');
   const [newRoutineFrequency, setNewRoutineFrequency] = useState<'daily' | 'weekly'>('daily');
   const [newRoutineWeekDay, setNewRoutineWeekDay] = useState(1);
+  const [newRoutineStartDate, setNewRoutineStartDate] = useState('');
+  const [newRoutineEndDate, setNewRoutineEndDate] = useState('');
 
-  const { routines, completions, addRoutine, removeRoutine, toggleCompletion } =
+  const { routines, completions, fetchRoutines, fetchCompletions, addRoutine, removeRoutine, toggleCompletion } =
     useRoutinesStore();
+
+  useEffect(() => {
+    fetchRoutines();
+    fetchCompletions();
+  }, [fetchRoutines, fetchCompletions]);
 
   const selectedDateStr = toISODateString(selectedDate);
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
+  // Check if a routine is active for a given date
+  const isRoutineActiveForDate = (routine: typeof routines[0], date: Date): boolean => {
+    if (!routine.active) return false;
+
+    // Check start date
+    if (routine.startDate && isBefore(date, parseISO(routine.startDate))) {
+      return false;
+    }
+
+    // Check end date
+    if (routine.endDate && isAfter(date, parseISO(routine.endDate))) {
+      return false;
+    }
+
+    return true;
+  };
+
   const getRoutinesForDate = (date: Date) => {
     const dayOfWeek = getDay(date);
     return routines.filter((routine) => {
-      if (!routine.active) return false;
+      if (!isRoutineActiveForDate(routine, date)) return false;
       if (routine.frequency === 'daily') return true;
       return routine.weekDay === dayOfWeek;
     });
@@ -46,14 +74,16 @@ export function RoutinesPage() {
     return completion?.completed || false;
   };
 
-  const handleAddRoutine = () => {
+  const handleAddRoutine = async () => {
     if (!newRoutineName.trim()) return;
 
-    addRoutine({
+    await addRoutine({
       id: crypto.randomUUID(),
       name: newRoutineName.trim(),
       frequency: newRoutineFrequency,
       weekDay: newRoutineFrequency === 'weekly' ? newRoutineWeekDay : undefined,
+      startDate: newRoutineStartDate || undefined,
+      endDate: newRoutineEndDate || undefined,
       createdAt: new Date().toISOString(),
       active: true,
     });
@@ -61,6 +91,8 @@ export function RoutinesPage() {
     setNewRoutineName('');
     setNewRoutineFrequency('daily');
     setNewRoutineWeekDay(1);
+    setNewRoutineStartDate('');
+    setNewRoutineEndDate('');
     setIsModalOpen(false);
   };
 
@@ -83,7 +115,7 @@ export function RoutinesPage() {
         <div>
           <h1 className="text-2xl font-bold text-dark-100">Routines</h1>
           <p className="text-dark-400 mt-1">
-            {routines.length} routine{routines.length > 1 ? 's' : ''} active{routines.length > 1 ? 's' : ''}
+            {routines.filter(r => r.active).length} routine{routines.filter(r => r.active).length > 1 ? 's' : ''} active{routines.filter(r => r.active).length > 1 ? 's' : ''}
           </p>
         </div>
         <Button onClick={() => setIsModalOpen(true)}>
@@ -135,12 +167,7 @@ export function RoutinesPage() {
         <div className="grid grid-cols-7 gap-2">
           {weekDays.map((day) => {
             const dayStr = toISODateString(day);
-            const dayOfWeek = getDay(day);
-            const dayRoutines = routines.filter((r) => {
-              if (!r.active) return false;
-              if (r.frequency === 'daily') return true;
-              return r.weekDay === dayOfWeek;
-            });
+            const dayRoutines = getRoutinesForDate(day);
             const dayCompletedCount = dayRoutines.filter((r) =>
               isRoutineCompleted(r.id, dayStr)
             ).length;
@@ -307,6 +334,13 @@ export function RoutinesPage() {
                               { locale: fr }
                             )}`}
                       </p>
+                      {(routine.startDate || routine.endDate) && (
+                        <p className="text-xs text-dark-500 mt-1">
+                          {routine.startDate && `Du ${format(parseISO(routine.startDate), 'd MMM yyyy', { locale: fr })}`}
+                          {routine.startDate && routine.endDate && ' '}
+                          {routine.endDate && `au ${format(parseISO(routine.endDate), 'd MMM yyyy', { locale: fr })}`}
+                        </p>
+                      )}
                     </div>
                     <button
                       onClick={() => removeRoutine(routine.id)}
@@ -382,6 +416,29 @@ export function RoutinesPage() {
               </select>
             </div>
           )}
+
+          {/* Date range - NEW */}
+          <div className="border-t border-dark-700 pt-4">
+            <p className="text-sm font-medium text-dark-300 mb-3">Période (optionnel)</p>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Date de début"
+                type="date"
+                value={newRoutineStartDate}
+                onChange={(e) => setNewRoutineStartDate(e.target.value)}
+              />
+              <Input
+                label="Date de fin"
+                type="date"
+                value={newRoutineEndDate}
+                onChange={(e) => setNewRoutineEndDate(e.target.value)}
+              />
+            </div>
+            <p className="text-xs text-dark-500 mt-2">
+              Laisse vide pour une routine sans limite de temps
+            </p>
+          </div>
+
           <div className="flex gap-3 pt-4">
             <Button
               variant="secondary"
