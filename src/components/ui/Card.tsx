@@ -19,16 +19,16 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
       <div
         ref={ref}
         className={`
-          bg-surface-light/80 backdrop-blur-xl rounded-2xl border border-dark-700/50
-          ${hover ? 'transition-all duration-300 hover:border-accent-500/30 hover:shadow-glow-sm' : ''}
-          ${glow ? 'border-accent-500/30 shadow-glow-sm' : ''}
+          bg-surface-card backdrop-blur-sm rounded-lg border border-gold-400/8
+          ${hover ? 'transition-all duration-500 ease-out hover:border-gold-400/15 hover:-translate-y-0.5' : ''}
+          ${glow ? 'border-gold-400/15 shadow-glow-sm' : ''}
           ${paddingStyles[padding]}
           ${className}
         `}
         style={{
           boxShadow: glow
-            ? '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2), 0 0 20px rgba(6, 182, 212, 0.15), inset 0 1px 0 0 rgba(255, 255, 255, 0.05)'
-            : '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2), inset 0 1px 0 0 rgba(255, 255, 255, 0.05)',
+            ? '0 4px 20px rgba(0, 0, 0, 0.4), 0 0 40px rgba(196, 172, 120, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.03)'
+            : '0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.02)',
         }}
         {...props}
       >

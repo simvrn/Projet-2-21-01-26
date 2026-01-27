@@ -6,9 +6,6 @@ import type {
   Expense,
   Income,
   ExpenseCategory,
-  Dish,
-  Person,
-  PersonCategory,
   Routine,
   RoutineCompletion,
   Challenge,
@@ -16,6 +13,10 @@ import type {
   Stock,
   Asset,
   CashAccount,
+  Crypto,
+  ChronicleSection,
+  ChronicleSubTheme,
+  ChronicleEntry,
 } from '@/types';
 
 // === GOALS STORE (avec Supabase) ===
@@ -250,83 +251,6 @@ export const useExpensesStore = create<ExpensesState>()(
   )
 );
 
-// === FOOD STORE ===
-interface FoodState {
-  dishes: Dish[];
-  addDish: (dish: Dish) => void;
-  updateDish: (id: string, dish: Partial<Dish>) => void;
-  removeDish: (id: string) => void;
-}
-
-export const useFoodStore = create<FoodState>()(
-  persist(
-    (set) => ({
-      dishes: [],
-      addDish: (dish) => set((state) => ({ dishes: [...state.dishes, dish] })),
-      updateDish: (id, updates) =>
-        set((state) => ({
-          dishes: state.dishes.map((d) => (d.id === id ? { ...d, ...updates } : d)),
-        })),
-      removeDish: (id) =>
-        set((state) => ({ dishes: state.dishes.filter((d) => d.id !== id) })),
-    }),
-    { name: 'food-storage' }
-  )
-);
-
-// === PERSONS STORE (BIOGRAPHIE) ===
-interface PersonsState {
-  persons: Person[];
-  categories: PersonCategory[];
-  addPerson: (person: Person) => void;
-  updatePerson: (id: string, updates: Partial<Person>) => void;
-  removePerson: (id: string) => void;
-  addCategory: (category: PersonCategory) => void;
-  removeCategory: (id: string) => void;
-  updateCategory: (id: string, updates: Partial<PersonCategory>) => void;
-}
-
-export const usePersonsStore = create<PersonsState>()(
-  persist(
-    (set) => ({
-      persons: [],
-      categories: [
-        { id: '1', name: 'Entrepreneur', color: '#06b6d4' },
-        { id: '2', name: 'Philosophe', color: '#a855f7' },
-        { id: '3', name: 'Artiste', color: '#ec4899' },
-        { id: '4', name: 'Scientifique', color: '#22c55e' },
-        { id: '5', name: 'Athlète', color: '#f59e0b' },
-      ],
-      addPerson: (person) =>
-        set((state) => ({ persons: [...state.persons, person] })),
-      updatePerson: (id, updates) =>
-        set((state) => ({
-          persons: state.persons.map((p) =>
-            p.id === id ? { ...p, ...updates } : p
-          ),
-        })),
-      removePerson: (id) =>
-        set((state) => ({
-          persons: state.persons.filter((p) => p.id !== id),
-        })),
-      addCategory: (category) =>
-        set((state) => ({ categories: [...state.categories, category] })),
-      removeCategory: (id) =>
-        set((state) => ({
-          categories: state.categories.filter((c) => c.id !== id),
-          // Optionally reassign persons with this category
-        })),
-      updateCategory: (id, updates) =>
-        set((state) => ({
-          categories: state.categories.map((c) =>
-            c.id === id ? { ...c, ...updates } : c
-          ),
-        })),
-    }),
-    { name: 'persons-storage' }
-  )
-);
-
 // === ROUTINES STORE (avec Supabase) ===
 interface RoutinesState {
   routines: Routine[];
@@ -479,27 +403,44 @@ export const useRoutinesStore = create<RoutinesState>()(
 // === CHALLENGES STORE ===
 interface ChallengesState {
   challenges: Challenge[];
-  updateChallenge: (month: string, content: string) => void;
+  addChallenge: (month: string, content: string) => void;
+  removeChallenge: (id: string) => void;
+  toggleChallengeComplete: (id: string) => void;
+  updateChallengeContent: (id: string, content: string) => void;
 }
 
 export const useChallengesStore = create<ChallengesState>()(
   persist(
     (set) => ({
       challenges: [],
-      updateChallenge: (month, content) =>
-        set((state) => {
-          const existing = state.challenges.find((c) => c.month === month);
-          if (existing) {
-            return {
-              challenges: state.challenges.map((c) =>
-                c.month === month ? { ...c, content } : c
-              ),
-            };
-          }
-          return {
-            challenges: [...state.challenges, { month, content }],
-          };
-        }),
+      addChallenge: (month, content) =>
+        set((state) => ({
+          challenges: [
+            ...state.challenges,
+            {
+              id: crypto.randomUUID(),
+              month,
+              content,
+              completed: false,
+            },
+          ],
+        })),
+      removeChallenge: (id) =>
+        set((state) => ({
+          challenges: state.challenges.filter((c) => c.id !== id),
+        })),
+      toggleChallengeComplete: (id) =>
+        set((state) => ({
+          challenges: state.challenges.map((c) =>
+            c.id === id ? { ...c, completed: !c.completed } : c
+          ),
+        })),
+      updateChallengeContent: (id, content) =>
+        set((state) => ({
+          challenges: state.challenges.map((c) =>
+            c.id === id ? { ...c, content } : c
+          ),
+        })),
     }),
     { name: 'challenges-storage' }
   )
@@ -616,6 +557,7 @@ export const useCalendarStore = create<CalendarState>()(
 interface FinanceState {
   stocks: Stock[];
   assets: Asset[];
+  cryptos: Crypto[];
   cashAccounts: CashAccount[];
   loading: boolean;
   // Stocks
@@ -630,6 +572,11 @@ interface FinanceState {
   addAsset: (asset: Asset) => Promise<void>;
   updateAsset: (id: string, updates: Partial<Asset>) => Promise<void>;
   removeAsset: (id: string) => Promise<void>;
+  // Cryptos
+  fetchCryptos: () => Promise<void>;
+  addCrypto: (crypto: Crypto) => Promise<void>;
+  updateCrypto: (id: string, updates: Partial<Crypto>) => Promise<void>;
+  removeCrypto: (id: string) => Promise<void>;
   // Cash
   fetchCashAccounts: () => Promise<void>;
   addCashAccount: (account: CashAccount) => Promise<void>;
@@ -637,19 +584,48 @@ interface FinanceState {
   removeCashAccount: (id: string) => Promise<void>;
 }
 
-// Fonction pour récupérer le prix d'une action via Yahoo Finance
-async function fetchYahooPrice(ticker: string): Promise<number | null> {
+// Fonction pour récupérer les prix des actions via notre API Vercel
+async function fetchStockPricesFromAPI(tickers: string[]): Promise<Record<string, { price: number; change: number; changePercent: number } | null>> {
   try {
-    // Utilisation d'un proxy CORS gratuit pour Yahoo Finance
-    const response = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`
-    );
-    if (!response.ok) return null;
+    const apiUrl = import.meta.env.DEV
+      ? `http://localhost:3001/api/stock-price?symbols=${tickers.join(',')}`
+      : `/api/stock-price?symbols=${tickers.join(',')}`;
+
+    console.log('Fetching stock prices from:', apiUrl);
+    const response = await fetch(apiUrl);
+    console.log('Response status:', response.status);
+
+    if (!response.ok) {
+      console.error('API response not OK:', response.status);
+      return {};
+    }
+
     const data = await response.json();
-    const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-    return price ? Math.round(price * 100) : null; // Convertir en centimes
-  } catch {
-    return null;
+    console.log('API response data:', data);
+
+    if (!data.success) {
+      console.error('API returned success: false');
+      return {};
+    }
+
+    const results: Record<string, { price: number; change: number; changePercent: number } | null> = {};
+    for (const [symbol, info] of Object.entries(data.data)) {
+      if (info && typeof info === 'object' && 'price' in info) {
+        const stockInfo = info as { price: number; change: number; changePercent: number };
+        results[symbol] = {
+          price: Math.round(stockInfo.price * 100), // Convertir en centimes
+          change: stockInfo.change,
+          changePercent: stockInfo.changePercent,
+        };
+      } else {
+        results[symbol] = null;
+      }
+    }
+    console.log('Processed prices:', results);
+    return results;
+  } catch (error) {
+    console.error('Error fetching stock prices:', error);
+    return {};
   }
 }
 
@@ -658,6 +634,7 @@ export const useFinanceStore = create<FinanceState>()(
     (set, get) => ({
       stocks: [],
       assets: [],
+      cryptos: [],
       cashAccounts: [],
       loading: false,
 
@@ -678,6 +655,9 @@ export const useFinanceStore = create<FinanceState>()(
             purchaseDate: row.purchase_date,
             currentPrice: row.current_price,
             lastUpdated: row.last_updated,
+            sold: row.sold || false,
+            salePrice: row.sale_price,
+            saleDate: row.sale_date,
             createdAt: row.created_at,
           }));
           set({ stocks, loading: false });
@@ -687,6 +667,7 @@ export const useFinanceStore = create<FinanceState>()(
       },
 
       addStock: async (stock) => {
+        console.log('Adding stock:', stock);
         const { error } = await supabase.from('stocks').insert({
           id: stock.id,
           ticker: stock.ticker,
@@ -696,14 +677,20 @@ export const useFinanceStore = create<FinanceState>()(
           purchase_date: stock.purchaseDate,
           current_price: stock.currentPrice,
           last_updated: stock.lastUpdated,
+          sold: stock.sold || false,
+          sale_price: stock.salePrice,
+          sale_date: stock.saleDate,
           created_at: stock.createdAt,
         });
-        if (!error) {
+        if (error) {
+          console.error('Error adding stock:', error);
+        } else {
           set((state) => ({ stocks: [...state.stocks, stock] }));
         }
       },
 
       updateStock: async (id, updates) => {
+        console.log('Updating stock:', id, updates);
         const dbUpdates: Record<string, unknown> = {};
         if (updates.ticker !== undefined) dbUpdates.ticker = updates.ticker;
         if (updates.name !== undefined) dbUpdates.name = updates.name;
@@ -712,9 +699,14 @@ export const useFinanceStore = create<FinanceState>()(
         if (updates.purchaseDate !== undefined) dbUpdates.purchase_date = updates.purchaseDate;
         if (updates.currentPrice !== undefined) dbUpdates.current_price = updates.currentPrice;
         if (updates.lastUpdated !== undefined) dbUpdates.last_updated = updates.lastUpdated;
+        if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
+        if (updates.salePrice !== undefined) dbUpdates.sale_price = updates.salePrice;
+        if (updates.saleDate !== undefined) dbUpdates.sale_date = updates.saleDate;
 
         const { error } = await supabase.from('stocks').update(dbUpdates).eq('id', id);
-        if (!error) {
+        if (error) {
+          console.error('Error updating stock:', error);
+        } else {
           set((state) => ({
             stocks: state.stocks.map((s) => (s.id === id ? { ...s, ...updates } : s)),
           }));
@@ -737,10 +729,15 @@ export const useFinanceStore = create<FinanceState>()(
 
       fetchStockPrices: async () => {
         const stocks = get().stocks;
+        if (stocks.length === 0) return;
+
+        const tickers = stocks.map((s) => s.ticker);
+        const prices = await fetchStockPricesFromAPI(tickers);
+
         for (const stock of stocks) {
-          const price = await fetchYahooPrice(stock.ticker);
-          if (price !== null) {
-            await get().updateStockPrice(stock.id, price);
+          const priceInfo = prices[stock.ticker];
+          if (priceInfo !== null && priceInfo !== undefined) {
+            await get().updateStockPrice(stock.id, priceInfo.price);
           }
         }
       },
@@ -761,6 +758,9 @@ export const useFinanceStore = create<FinanceState>()(
             currentValue: row.current_value,
             purchaseDate: row.purchase_date,
             category: row.category,
+            sold: row.sold || false,
+            salePrice: row.sale_price,
+            saleDate: row.sale_date,
             createdAt: row.created_at,
           }));
           set({ assets, loading: false });
@@ -770,6 +770,7 @@ export const useFinanceStore = create<FinanceState>()(
       },
 
       addAsset: async (asset) => {
+        console.log('Adding asset:', asset);
         const { error } = await supabase.from('assets').insert({
           id: asset.id,
           name: asset.name,
@@ -778,14 +779,20 @@ export const useFinanceStore = create<FinanceState>()(
           current_value: asset.currentValue,
           purchase_date: asset.purchaseDate,
           category: asset.category,
+          sold: asset.sold || false,
+          sale_price: asset.salePrice,
+          sale_date: asset.saleDate,
           created_at: asset.createdAt,
         });
-        if (!error) {
+        if (error) {
+          console.error('Error adding asset:', error);
+        } else {
           set((state) => ({ assets: [...state.assets, asset] }));
         }
       },
 
       updateAsset: async (id, updates) => {
+        console.log('Updating asset:', id, updates);
         const dbUpdates: Record<string, unknown> = {};
         if (updates.name !== undefined) dbUpdates.name = updates.name;
         if (updates.description !== undefined) dbUpdates.description = updates.description;
@@ -793,9 +800,14 @@ export const useFinanceStore = create<FinanceState>()(
         if (updates.currentValue !== undefined) dbUpdates.current_value = updates.currentValue;
         if (updates.purchaseDate !== undefined) dbUpdates.purchase_date = updates.purchaseDate;
         if (updates.category !== undefined) dbUpdates.category = updates.category;
+        if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
+        if (updates.salePrice !== undefined) dbUpdates.sale_price = updates.salePrice;
+        if (updates.saleDate !== undefined) dbUpdates.sale_date = updates.saleDate;
 
         const { error } = await supabase.from('assets').update(dbUpdates).eq('id', id);
-        if (!error) {
+        if (error) {
+          console.error('Error updating asset:', error);
+        } else {
           set((state) => ({
             assets: state.assets.map((a) => (a.id === id ? { ...a, ...updates } : a)),
           }));
@@ -806,6 +818,88 @@ export const useFinanceStore = create<FinanceState>()(
         const { error } = await supabase.from('assets').delete().eq('id', id);
         if (!error) {
           set((state) => ({ assets: state.assets.filter((a) => a.id !== id) }));
+        }
+      },
+
+      // === CRYPTOS ===
+      fetchCryptos: async () => {
+        set({ loading: true });
+        const { data, error } = await supabase
+          .from('cryptos')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!error && data) {
+          const cryptos: Crypto[] = data.map((row) => ({
+            id: row.id,
+            symbol: row.symbol,
+            name: row.name,
+            quantity: row.quantity,
+            purchasePrice: row.purchase_price,
+            purchaseDate: row.purchase_date,
+            currentPrice: row.current_price,
+            lastUpdated: row.last_updated,
+            sold: row.sold || false,
+            salePrice: row.sale_price,
+            saleDate: row.sale_date,
+            createdAt: row.created_at,
+          }));
+          set({ cryptos, loading: false });
+        } else {
+          set({ loading: false });
+        }
+      },
+
+      addCrypto: async (crypto) => {
+        console.log('Adding crypto:', crypto);
+        const { error } = await supabase.from('cryptos').insert({
+          id: crypto.id,
+          symbol: crypto.symbol,
+          name: crypto.name,
+          quantity: crypto.quantity,
+          purchase_price: crypto.purchasePrice,
+          purchase_date: crypto.purchaseDate,
+          current_price: crypto.currentPrice,
+          last_updated: crypto.lastUpdated,
+          sold: crypto.sold || false,
+          sale_price: crypto.salePrice,
+          sale_date: crypto.saleDate,
+          created_at: crypto.createdAt,
+        });
+        if (error) {
+          console.error('Error adding crypto:', error);
+        } else {
+          set((state) => ({ cryptos: [...state.cryptos, crypto] }));
+        }
+      },
+
+      updateCrypto: async (id, updates) => {
+        console.log('Updating crypto:', id, updates);
+        const dbUpdates: Record<string, unknown> = {};
+        if (updates.symbol !== undefined) dbUpdates.symbol = updates.symbol;
+        if (updates.name !== undefined) dbUpdates.name = updates.name;
+        if (updates.quantity !== undefined) dbUpdates.quantity = updates.quantity;
+        if (updates.purchasePrice !== undefined) dbUpdates.purchase_price = updates.purchasePrice;
+        if (updates.purchaseDate !== undefined) dbUpdates.purchase_date = updates.purchaseDate;
+        if (updates.currentPrice !== undefined) dbUpdates.current_price = updates.currentPrice;
+        if (updates.lastUpdated !== undefined) dbUpdates.last_updated = updates.lastUpdated;
+        if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
+        if (updates.salePrice !== undefined) dbUpdates.sale_price = updates.salePrice;
+        if (updates.saleDate !== undefined) dbUpdates.sale_date = updates.saleDate;
+
+        const { error } = await supabase.from('cryptos').update(dbUpdates).eq('id', id);
+        if (error) {
+          console.error('Error updating crypto:', error);
+        } else {
+          set((state) => ({
+            cryptos: state.cryptos.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+          }));
+        }
+      },
+
+      removeCrypto: async (id) => {
+        const { error } = await supabase.from('cryptos').delete().eq('id', id);
+        if (!error) {
+          set((state) => ({ cryptos: state.cryptos.filter((c) => c.id !== id) }));
         }
       },
 
@@ -867,5 +961,255 @@ export const useFinanceStore = create<FinanceState>()(
       },
     }),
     { name: 'finance-storage' }
+  )
+);
+
+// === CHRONICLES STORE (Structure hierarchique extensible avec Supabase) ===
+interface ChroniclesState {
+  sections: ChronicleSection[];
+  subThemes: ChronicleSubTheme[];
+  entries: ChronicleEntry[];
+  loading: boolean;
+  // Sections
+  fetchSections: () => Promise<void>;
+  addSection: (section: ChronicleSection) => Promise<void>;
+  updateSection: (id: string, updates: Partial<ChronicleSection>) => Promise<void>;
+  removeSection: (id: string) => Promise<void>;
+  // SubThemes
+  fetchSubThemes: () => Promise<void>;
+  addSubTheme: (subTheme: ChronicleSubTheme) => Promise<void>;
+  updateSubTheme: (id: string, updates: Partial<ChronicleSubTheme>) => Promise<void>;
+  removeSubTheme: (id: string) => Promise<void>;
+  // Entries
+  fetchEntries: () => Promise<void>;
+  addEntry: (entry: ChronicleEntry) => Promise<void>;
+  updateEntry: (id: string, updates: Partial<ChronicleEntry>) => Promise<void>;
+  removeEntry: (id: string) => Promise<void>;
+}
+
+export const useChroniclesStore = create<ChroniclesState>()(
+  persist(
+    (set) => ({
+      sections: [],
+      subThemes: [],
+      entries: [],
+      loading: false,
+
+      // === SECTIONS ===
+      fetchSections: async () => {
+        set({ loading: true });
+        const { data, error } = await supabase
+          .from('chronicle_sections')
+          .select('*')
+          .order('order', { ascending: true });
+        if (!error && data) {
+          const sections: ChronicleSection[] = data.map((row) => ({
+            id: row.id,
+            name: row.name,
+            image: row.image,
+            order: row.order,
+            createdAt: row.created_at,
+          }));
+          set({ sections, loading: false });
+        } else {
+          set({ loading: false });
+        }
+      },
+
+      addSection: async (section) => {
+        // Ajouter localement d'abord pour UX immediate
+        set((state) => ({ sections: [...state.sections, section] }));
+
+        // Puis sauvegarder dans Supabase
+        const { error } = await supabase.from('chronicle_sections').insert({
+          id: section.id,
+          name: section.name,
+          image: section.image,
+          order: section.order,
+          created_at: section.createdAt,
+        });
+        if (error) {
+          console.warn('Supabase error (section):', error.message);
+        }
+      },
+
+      updateSection: async (id, updates) => {
+        // Mettre a jour localement d'abord
+        set((state) => ({
+          sections: state.sections.map((s) => (s.id === id ? { ...s, ...updates } : s)),
+        }));
+
+        const dbUpdates: Record<string, unknown> = {};
+        if (updates.name !== undefined) dbUpdates.name = updates.name;
+        if (updates.image !== undefined) dbUpdates.image = updates.image;
+        if (updates.order !== undefined) dbUpdates.order = updates.order;
+
+        const { error } = await supabase.from('chronicle_sections').update(dbUpdates).eq('id', id);
+        if (error) {
+          console.warn('Supabase error (updateSection):', error.message);
+        }
+      },
+
+      removeSection: async (id) => {
+        // Supprimer localement d'abord
+        set((state) => ({
+          sections: state.sections.filter((s) => s.id !== id),
+          subThemes: state.subThemes.filter((st) => st.sectionId !== id),
+          entries: state.entries.filter((e) => {
+            const subTheme = state.subThemes.find((st) => st.id === e.subThemeId);
+            return subTheme?.sectionId !== id;
+          }),
+        }));
+
+        const { error } = await supabase.from('chronicle_sections').delete().eq('id', id);
+        if (error) {
+          console.warn('Supabase error (removeSection):', error.message);
+        }
+      },
+
+      // === SUB-THEMES ===
+      fetchSubThemes: async () => {
+        const { data, error } = await supabase
+          .from('chronicle_subthemes')
+          .select('*')
+          .order('order', { ascending: true });
+        if (!error && data) {
+          const subThemes: ChronicleSubTheme[] = data.map((row) => ({
+            id: row.id,
+            sectionId: row.section_id,
+            name: row.name,
+            image: row.image,
+            description: row.description,
+            order: row.order,
+            createdAt: row.created_at,
+          }));
+          set({ subThemes });
+        }
+      },
+
+      addSubTheme: async (subTheme) => {
+        // Ajouter localement d'abord
+        set((state) => ({ subThemes: [...state.subThemes, subTheme] }));
+
+        const { error } = await supabase.from('chronicle_subthemes').insert({
+          id: subTheme.id,
+          section_id: subTheme.sectionId,
+          name: subTheme.name,
+          image: subTheme.image,
+          description: subTheme.description,
+          order: subTheme.order,
+          created_at: subTheme.createdAt,
+        });
+        if (error) {
+          console.warn('Supabase error (subTheme):', error.message);
+        }
+      },
+
+      updateSubTheme: async (id, updates) => {
+        // Mettre a jour localement d'abord
+        set((state) => ({
+          subThemes: state.subThemes.map((st) => (st.id === id ? { ...st, ...updates } : st)),
+        }));
+
+        const dbUpdates: Record<string, unknown> = {};
+        if (updates.sectionId !== undefined) dbUpdates.section_id = updates.sectionId;
+        if (updates.name !== undefined) dbUpdates.name = updates.name;
+        if (updates.image !== undefined) dbUpdates.image = updates.image;
+        if (updates.description !== undefined) dbUpdates.description = updates.description;
+        if (updates.order !== undefined) dbUpdates.order = updates.order;
+
+        const { error } = await supabase.from('chronicle_subthemes').update(dbUpdates).eq('id', id);
+        if (error) {
+          console.warn('Supabase error (updateSubTheme):', error.message);
+        }
+      },
+
+      removeSubTheme: async (id) => {
+        // Supprimer localement d'abord
+        set((state) => ({
+          subThemes: state.subThemes.filter((st) => st.id !== id),
+          entries: state.entries.filter((e) => e.subThemeId !== id),
+        }));
+
+        const { error } = await supabase.from('chronicle_subthemes').delete().eq('id', id);
+        if (error) {
+          console.warn('Supabase error (removeSubTheme):', error.message);
+        }
+      },
+
+      // === ENTRIES ===
+      fetchEntries: async () => {
+        const { data, error } = await supabase
+          .from('chronicle_entries')
+          .select('*')
+          .order('order', { ascending: true });
+        if (!error && data) {
+          const entries: ChronicleEntry[] = data.map((row) => ({
+            id: row.id,
+            subThemeId: row.subtheme_id,
+            name: row.name,
+            image: row.image,
+            category: row.category,
+            description: row.description,
+            annexe: row.annexe,
+            order: row.order,
+            createdAt: row.created_at,
+          }));
+          set({ entries });
+        }
+      },
+
+      addEntry: async (entry) => {
+        // Ajouter localement d'abord pour UX immediate
+        set((state) => ({ entries: [...state.entries, entry] }));
+
+        const { error } = await supabase.from('chronicle_entries').insert({
+          id: entry.id,
+          subtheme_id: entry.subThemeId,
+          name: entry.name,
+          image: entry.image,
+          category: entry.category,
+          description: entry.description,
+          annexe: entry.annexe,
+          order: entry.order,
+          created_at: entry.createdAt,
+        });
+        if (error) {
+          console.warn('Supabase error (entry):', error.message);
+        }
+      },
+
+      updateEntry: async (id, updates) => {
+        // Mettre a jour localement d'abord
+        set((state) => ({
+          entries: state.entries.map((e) => (e.id === id ? { ...e, ...updates } : e)),
+        }));
+
+        const dbUpdates: Record<string, unknown> = {};
+        if (updates.subThemeId !== undefined) dbUpdates.subtheme_id = updates.subThemeId;
+        if (updates.name !== undefined) dbUpdates.name = updates.name;
+        if (updates.image !== undefined) dbUpdates.image = updates.image;
+        if (updates.category !== undefined) dbUpdates.category = updates.category;
+        if (updates.description !== undefined) dbUpdates.description = updates.description;
+        if (updates.annexe !== undefined) dbUpdates.annexe = updates.annexe;
+        if (updates.order !== undefined) dbUpdates.order = updates.order;
+
+        const { error } = await supabase.from('chronicle_entries').update(dbUpdates).eq('id', id);
+        if (error) {
+          console.warn('Supabase error (updateEntry):', error.message);
+        }
+      },
+
+      removeEntry: async (id) => {
+        // Supprimer localement d'abord
+        set((state) => ({ entries: state.entries.filter((e) => e.id !== id) }));
+
+        const { error } = await supabase.from('chronicle_entries').delete().eq('id', id);
+        if (error) {
+          console.warn('Supabase error (removeEntry):', error.message);
+        }
+      },
+    }),
+    { name: 'chronicles-storage' }
   )
 );

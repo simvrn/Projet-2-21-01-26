@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -10,12 +10,17 @@ import {
   Wallet,
   Edit2,
   AlertCircle,
+  Search,
+  Loader2,
+  BadgeDollarSign,
+  History,
+  Bitcoin,
 } from 'lucide-react';
 import { Button, Card, Modal, Input } from '@/components/ui';
 import { useFinanceStore } from '@/stores';
-import type { Stock, Asset, CashAccount } from '@/types';
+import type { Stock, Asset, CashAccount, Crypto } from '@/types';
 
-type TabType = 'stocks' | 'assets' | 'cash';
+type TabType = 'stocks' | 'crypto' | 'assets' | 'cash' | 'sold';
 
 export function FinancePage() {
   const [activeTab, setActiveTab] = useState<TabType>('stocks');
@@ -32,6 +37,11 @@ export function FinancePage() {
   const [stockCurrentPrice, setStockCurrentPrice] = useState('');
   const [stockPurchaseDate, setStockPurchaseDate] = useState('');
 
+  // Stock search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ symbol: string; name: string; exchange: string }[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
   // Asset form
   const [assetName, setAssetName] = useState('');
   const [assetDescription, setAssetDescription] = useState('');
@@ -45,12 +55,32 @@ export function FinancePage() {
   const [cashBalance, setCashBalance] = useState('');
   const [cashCurrency, setCashCurrency] = useState('EUR');
 
+  // Crypto form
+  const [cryptoSymbol, setCryptoSymbol] = useState('');
+  const [cryptoName, setCryptoName] = useState('');
+  const [cryptoQuantity, setCryptoQuantity] = useState('');
+  const [cryptoPurchasePrice, setCryptoPurchasePrice] = useState('');
+  const [cryptoCurrentPrice, setCryptoCurrentPrice] = useState('');
+  const [cryptoPurchaseDate, setCryptoPurchaseDate] = useState('');
+
+  // Sell modal
+  const [isSellModalOpen, setIsSellModalOpen] = useState(false);
+  const [sellingItem, setSellingItem] = useState<Stock | Asset | Crypto | null>(null);
+  const [sellingType, setSellingType] = useState<'stock' | 'asset' | 'crypto'>('stock');
+  const [sellPrice, setSellPrice] = useState('');
+  const [sellDate, setSellDate] = useState('');
+
+  // Sold tab filter
+  const [soldFilter, setSoldFilter] = useState<'all' | 'stocks' | 'crypto' | 'assets'>('all');
+
   const {
     stocks,
     assets,
+    cryptos,
     cashAccounts,
     fetchStocks,
     fetchAssets,
+    fetchCryptos,
     fetchCashAccounts,
     addStock,
     updateStock,
@@ -59,6 +89,9 @@ export function FinancePage() {
     addAsset,
     updateAsset,
     removeAsset,
+    addCrypto,
+    updateCrypto,
+    removeCrypto,
     addCashAccount,
     updateCashAccount,
     removeCashAccount,
@@ -67,8 +100,9 @@ export function FinancePage() {
   useEffect(() => {
     fetchStocks();
     fetchAssets();
+    fetchCryptos();
     fetchCashAccounts();
-  }, [fetchStocks, fetchAssets, fetchCashAccounts]);
+  }, [fetchStocks, fetchAssets, fetchCryptos, fetchCashAccounts]);
 
   const resetForms = () => {
     setStockTicker('');
@@ -77,6 +111,14 @@ export function FinancePage() {
     setStockPurchasePrice('');
     setStockCurrentPrice('');
     setStockPurchaseDate('');
+    setSearchQuery('');
+    setSearchResults([]);
+    setCryptoSymbol('');
+    setCryptoName('');
+    setCryptoQuantity('');
+    setCryptoPurchasePrice('');
+    setCryptoCurrentPrice('');
+    setCryptoPurchaseDate('');
     setAssetName('');
     setAssetDescription('');
     setAssetPurchasePrice('');
@@ -87,6 +129,93 @@ export function FinancePage() {
     setCashBalance('');
     setCashCurrency('EUR');
     setEditingItem(null);
+  };
+
+  // Recherche d'actions
+  const searchStocks = useCallback(async (query: string) => {
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const apiUrl = import.meta.env.DEV
+        ? `http://localhost:3001/api/stock-search?query=${encodeURIComponent(query)}`
+        : `/api/stock-search?query=${encodeURIComponent(query)}`;
+
+      const response = await fetch(apiUrl);
+      const data = await response.json();
+
+      if (data.success) {
+        setSearchResults(data.data);
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchQuery) {
+        searchStocks(searchQuery);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, searchStocks]);
+
+  const selectStock = (symbol: string, name: string) => {
+    setStockTicker(symbol);
+    setStockName(name);
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+  // Sell functions
+  const openSellModal = (item: Stock | Asset | Crypto, type: 'stock' | 'asset' | 'crypto') => {
+    setSellingItem(item);
+    setSellingType(type);
+    setSellPrice('');
+    setSellDate(new Date().toISOString().split('T')[0]);
+    setIsSellModalOpen(true);
+  };
+
+  const handleSell = async () => {
+    console.log('handleSell called', { sellingItem, sellPrice, sellingType });
+    if (!sellingItem || !sellPrice) {
+      console.log('handleSell: missing sellingItem or sellPrice');
+      return;
+    }
+
+    const salePriceInCents = Math.round(parseFloat(sellPrice) * 100);
+    console.log('Selling:', { id: sellingItem.id, salePriceInCents, sellDate, sellingType });
+
+    if (sellingType === 'stock') {
+      await updateStock(sellingItem.id, {
+        sold: true,
+        salePrice: salePriceInCents,
+        saleDate: sellDate,
+      });
+    } else if (sellingType === 'crypto') {
+      await updateCrypto(sellingItem.id, {
+        sold: true,
+        salePrice: salePriceInCents,
+        saleDate: sellDate,
+      });
+    } else {
+      await updateAsset(sellingItem.id, {
+        sold: true,
+        salePrice: salePriceInCents,
+        saleDate: sellDate,
+      });
+    }
+
+    console.log('Sale completed, closing modal');
+    setIsSellModalOpen(false);
+    setSellingItem(null);
   };
 
   const openAddModal = (type: TabType) => {
@@ -133,7 +262,11 @@ export function FinancePage() {
   };
 
   const handleSubmitStock = async () => {
-    if (!stockTicker || !stockName || !stockQuantity || !stockPurchasePrice) return;
+    console.log('handleSubmitStock called', { stockTicker, stockName, stockQuantity, stockPurchasePrice });
+    if (!stockTicker || !stockName || !stockQuantity || !stockPurchasePrice) {
+      console.log('handleSubmitStock: missing required fields');
+      return;
+    }
 
     const stockData: Stock = {
       id: (editingItem as Stock)?.id || crypto.randomUUID(),
@@ -147,12 +280,15 @@ export function FinancePage() {
       createdAt: (editingItem as Stock)?.createdAt || new Date().toISOString(),
     };
 
+    console.log('Submitting stock data:', stockData);
+
     if (editingItem) {
       await updateStock(editingItem.id, stockData);
     } else {
       await addStock(stockData);
     }
 
+    console.log('Stock submitted successfully');
     setIsModalOpen(false);
     resetForms();
   };
@@ -185,7 +321,7 @@ export function FinancePage() {
     if (!cashName || !cashBalance) return;
 
     const cashData: CashAccount = {
-      id: (editingItem as CashAccount)?.id || crypto.randomUUID(),
+      id: (editingItem as CashAccount)?.id || window.crypto.randomUUID(),
       name: cashName,
       balance: Math.round(parseFloat(cashBalance) * 100),
       currency: cashCurrency,
@@ -198,6 +334,38 @@ export function FinancePage() {
       await addCashAccount(cashData);
     }
 
+    setIsModalOpen(false);
+    resetForms();
+  };
+
+  const handleSubmitCrypto = async () => {
+    console.log('handleSubmitCrypto called', { cryptoSymbol, cryptoName, cryptoQuantity, cryptoPurchasePrice });
+    if (!cryptoSymbol || !cryptoName || !cryptoQuantity || !cryptoPurchasePrice) {
+      console.log('handleSubmitCrypto: missing required fields');
+      return;
+    }
+
+    const cryptoData: Crypto = {
+      id: (editingItem as Crypto)?.id || window.crypto.randomUUID(),
+      symbol: cryptoSymbol.toUpperCase(),
+      name: cryptoName,
+      quantity: parseFloat(cryptoQuantity),
+      purchasePrice: Math.round(parseFloat(cryptoPurchasePrice) * 100),
+      purchaseDate: cryptoPurchaseDate || new Date().toISOString().split('T')[0],
+      currentPrice: cryptoCurrentPrice ? Math.round(parseFloat(cryptoCurrentPrice) * 100) : undefined,
+      lastUpdated: cryptoCurrentPrice ? new Date().toISOString() : undefined,
+      createdAt: (editingItem as Crypto)?.createdAt || new Date().toISOString(),
+    };
+
+    console.log('Submitting crypto data:', cryptoData);
+
+    if (editingItem) {
+      await updateCrypto(editingItem.id, cryptoData);
+    } else {
+      await addCrypto(cryptoData);
+    }
+
+    console.log('Crypto submitted successfully');
     setIsModalOpen(false);
     resetForms();
   };
@@ -225,18 +393,73 @@ export function FinancePage() {
   const calculateAssetGainPercent = (asset: Asset) =>
     ((asset.currentValue - asset.purchasePrice) / asset.purchasePrice) * 100;
 
-  // Totals
-  const totalStocksValue = stocks.reduce((sum, s) => sum + calculateStockValue(s), 0);
-  const totalStocksGain = stocks.reduce((sum, s) => sum + (calculateStockGain(s) || 0), 0);
-  const totalAssetsValue = assets.reduce((sum, a) => sum + a.currentValue, 0);
-  const totalAssetsGain = assets.reduce((sum, a) => sum + calculateAssetGain(a), 0);
+  // Crypto calculations
+  const calculateCryptoValue = (crypto: Crypto) => {
+    const price = crypto.currentPrice || crypto.purchasePrice;
+    return price * crypto.quantity;
+  };
+
+  const calculateCryptoGain = (crypto: Crypto) => {
+    if (!crypto.currentPrice) return null;
+    const currentValue = crypto.currentPrice * crypto.quantity;
+    const purchaseValue = crypto.purchasePrice * crypto.quantity;
+    return currentValue - purchaseValue;
+  };
+
+  const calculateCryptoGainPercent = (crypto: Crypto) => {
+    if (!crypto.currentPrice) return null;
+    return ((crypto.currentPrice - crypto.purchasePrice) / crypto.purchasePrice) * 100;
+  };
+
+  // Separate active and sold items
+  const activeStocks = stocks.filter(s => !s.sold);
+  const soldStocks = stocks.filter(s => s.sold);
+  const activeCryptos = cryptos.filter(c => !c.sold);
+  const soldCryptos = cryptos.filter(c => c.sold);
+  const activeAssets = assets.filter(a => !a.sold);
+  const soldAssets = assets.filter(a => a.sold);
+
+  // Totals - Only count active (unsold) items
+  const totalStocksValue = activeStocks.reduce((sum, s) => sum + calculateStockValue(s), 0);
+  const totalStocksGain = activeStocks.reduce((sum, s) => sum + (calculateStockGain(s) || 0), 0);
+  const totalCryptosValue = activeCryptos.reduce((sum, c) => sum + calculateCryptoValue(c), 0);
+  const totalCryptosGain = activeCryptos.reduce((sum, c) => sum + (calculateCryptoGain(c) || 0), 0);
+  const totalAssetsValue = activeAssets.reduce((sum, a) => sum + a.currentValue, 0);
+  const totalAssetsGain = activeAssets.reduce((sum, a) => sum + calculateAssetGain(a), 0);
   const totalCash = cashAccounts.reduce((sum, c) => sum + c.balance, 0);
-  const totalNetWorth = totalStocksValue + totalAssetsValue + totalCash;
+  const totalNetWorth = totalStocksValue + totalCryptosValue + totalAssetsValue + totalCash;
+
+  // Calculate sold items profit
+  const soldStocksProfit = soldStocks.reduce((sum, s) => {
+    if (s.salePrice) {
+      return sum + (s.salePrice - s.purchasePrice) * s.quantity;
+    }
+    return sum;
+  }, 0);
+
+  const soldCryptosProfit = soldCryptos.reduce((sum, c) => {
+    if (c.salePrice) {
+      return sum + (c.salePrice - c.purchasePrice) * c.quantity;
+    }
+    return sum;
+  }, 0);
+
+  const soldAssetsProfit = soldAssets.reduce((sum, a) => {
+    if (a.salePrice) {
+      return sum + (a.salePrice - a.purchasePrice);
+    }
+    return sum;
+  }, 0);
+
+  const totalSoldProfit = soldStocksProfit + soldCryptosProfit + soldAssetsProfit;
+  const totalSoldCount = soldStocks.length + soldCryptos.length + soldAssets.length;
 
   const tabs = [
-    { id: 'stocks' as TabType, label: 'Bourse', icon: TrendingUp, count: stocks.length },
-    { id: 'assets' as TabType, label: 'Objets', icon: Package, count: assets.length },
-    { id: 'cash' as TabType, label: 'Cash', icon: Wallet, count: cashAccounts.length },
+    { id: 'stocks' as const, label: 'Actions', icon: TrendingUp, count: activeStocks.length },
+    { id: 'crypto' as const, label: 'Crypto', icon: Bitcoin, count: activeCryptos.length },
+    { id: 'assets' as const, label: 'Objets', icon: Package, count: activeAssets.length },
+    { id: 'cash' as const, label: 'Cash', icon: Wallet, count: cashAccounts.length },
+    { id: 'sold' as const, label: 'Vendus', icon: History, count: totalSoldCount },
   ];
 
   return (
@@ -244,32 +467,34 @@ export function FinancePage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-dark-100">Finance</h1>
-          <p className="text-dark-400 mt-1">Gérez vos investissements et actifs</p>
+          <h1 className="text-2xl font-serif text-ivory-100">Finance</h1>
+          <p className="text-ivory-500 mt-1">Gérez vos investissements et actifs</p>
         </div>
-        <Button onClick={() => openAddModal(activeTab)}>
-          <Plus className="w-5 h-5 mr-2" />
-          Ajouter
-        </Button>
+        {activeTab !== 'sold' && (
+          <Button onClick={() => openAddModal(activeTab)}>
+            <Plus className="w-5 h-5 mr-2" />
+            Ajouter
+          </Button>
+        )}
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card glow className="text-center">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <Card glow className="text-center col-span-2 md:col-span-1">
           <div className="flex items-center justify-center gap-2 mb-2">
-            <DollarSign className="w-5 h-5 text-accent-400" />
-            <span className="text-sm text-dark-400">Patrimoine total</span>
+            <DollarSign className="w-5 h-5 text-gold-400" />
+            <span className="text-sm text-ivory-500">Patrimoine total</span>
           </div>
-          <p className="text-2xl font-bold text-accent-400">
+          <p className="text-2xl font-serif text-gold-400">
             {(totalNetWorth / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
           </p>
         </Card>
         <Card className="text-center">
           <div className="flex items-center justify-center gap-2 mb-2">
-            <TrendingUp className="w-5 h-5 text-blue-400" />
-            <span className="text-sm text-dark-400">Bourse</span>
+            <TrendingUp className="w-5 h-5 text-gold-400/70" />
+            <span className="text-sm text-ivory-500">Bourse</span>
           </div>
-          <p className="text-xl font-bold text-dark-100">
+          <p className="text-xl font-serif text-ivory-100">
             {(totalStocksValue / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
           </p>
           <p className={`text-sm ${totalStocksGain >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -278,10 +503,22 @@ export function FinancePage() {
         </Card>
         <Card className="text-center">
           <div className="flex items-center justify-center gap-2 mb-2">
-            <Package className="w-5 h-5 text-purple-400" />
-            <span className="text-sm text-dark-400">Objets</span>
+            <Bitcoin className="w-5 h-5 text-orange-400" />
+            <span className="text-sm text-ivory-500">Crypto</span>
           </div>
-          <p className="text-xl font-bold text-dark-100">
+          <p className="text-xl font-serif text-ivory-100">
+            {(totalCryptosValue / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+          </p>
+          <p className={`text-sm ${totalCryptosGain >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {totalCryptosGain >= 0 ? '+' : ''}{(totalCryptosGain / 100).toFixed(2)} €
+          </p>
+        </Card>
+        <Card className="text-center">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <Package className="w-5 h-5 text-ivory-400" />
+            <span className="text-sm text-ivory-500">Objets</span>
+          </div>
+          <p className="text-xl font-serif text-ivory-100">
             {(totalAssetsValue / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
           </p>
           <p className={`text-sm ${totalAssetsGain >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -291,110 +528,141 @@ export function FinancePage() {
         <Card className="text-center">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Wallet className="w-5 h-5 text-emerald-400" />
-            <span className="text-sm text-dark-400">Cash</span>
+            <span className="text-sm text-ivory-500">Cash</span>
           </div>
-          <p className="text-xl font-bold text-dark-100">
+          <p className="text-xl font-serif text-ivory-100">
             {(totalCash / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
           </p>
         </Card>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-dark-700 pb-2">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-accent-500/20 text-accent-400'
-                  : 'text-dark-400 hover:bg-dark-700/50'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-              <span className="text-xs bg-dark-700 px-2 py-0.5 rounded-full">{tab.count}</span>
-            </button>
-          );
-        })}
+      <div className="flex items-center justify-between border-b border-noir-700 pb-2">
+        <div className="flex gap-2 flex-wrap">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-gold-400/10 text-gold-400'
+                    : 'text-ivory-500 hover:bg-noir-800/50 hover:text-ivory-300'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{tab.label}</span>
+                <span className="text-xs bg-noir-800 px-2 py-0.5 rounded-full">{tab.count}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Stocks Tab */}
       {activeTab === 'stocks' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-dark-100">Actions</h2>
+            <h2 className="font-semibold text-ivory-200">Actions</h2>
             <Button variant="secondary" size="sm" onClick={handleRefreshPrices} disabled={isRefreshing}>
               <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
               Actualiser les prix
             </Button>
           </div>
 
-          <div className="bg-dark-700/30 rounded-lg p-3 flex items-start gap-2 text-sm">
-            <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-            <div className="text-dark-300">
-              <strong className="text-dark-200">API Yahoo Finance :</strong> Les prix sont récupérés automatiquement.
-              Si l'API ne fonctionne pas, vous pouvez saisir les prix manuellement.
+          <div className="bg-noir-800/50 border border-gold-400/20 rounded-lg p-3 flex items-start gap-2 text-sm">
+            <AlertCircle className="w-4 h-4 text-gold-400 flex-shrink-0 mt-0.5" />
+            <div className="text-ivory-400">
+              <strong className="text-ivory-300">Prix en temps réel :</strong> Cliquez sur "Actualiser les prix" pour récupérer les cours via Yahoo Finance. Ouvrez la console (F12) pour voir les logs.
             </div>
           </div>
 
-          {stocks.length === 0 ? (
+          {activeStocks.length === 0 ? (
             <Card className="text-center py-12">
-              <TrendingUp className="w-12 h-12 text-dark-500 mx-auto mb-4" />
-              <p className="text-dark-400">Aucune action</p>
-              <button onClick={() => openAddModal('stocks')} className="text-accent-400 text-sm mt-2">
+              <TrendingUp className="w-12 h-12 text-ivory-600 mx-auto mb-4" />
+              <p className="text-ivory-500">Aucune action</p>
+              <button onClick={() => openAddModal('stocks')} className="text-gold-400 text-sm mt-2">
                 + Ajouter une action
               </button>
             </Card>
           ) : (
             <div className="space-y-3">
-              {stocks.map((stock) => {
+              {activeStocks.map((stock) => {
                 const value = calculateStockValue(stock);
                 const gain = calculateStockGain(stock);
                 const gainPercent = calculateStockGainPercent(stock);
                 const hasCurrentPrice = stock.currentPrice !== undefined;
+                const lastUpdated = stock.lastUpdated ? new Date(stock.lastUpdated) : null;
 
                 return (
                   <Card key={stock.id} padding="sm" hover>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                          <span className="text-blue-400 font-bold text-sm">{stock.ticker}</span>
+                        <div className="w-12 h-12 rounded-xl bg-gold-400/20 flex items-center justify-center">
+                          <span className="text-gold-400 font-bold text-sm">{stock.ticker}</span>
                         </div>
                         <div>
-                          <p className="font-medium text-dark-100">{stock.name}</p>
-                          <p className="text-sm text-dark-400">
-                            {stock.quantity} × {(stock.purchasePrice / 100).toFixed(2)} €
-                          </p>
+                          <p className="font-medium text-ivory-100">{stock.name}</p>
+                          <div className="flex items-center gap-3 text-sm">
+                            <span className="text-ivory-500">
+                              {stock.quantity} × {(stock.purchasePrice / 100).toFixed(2)} €
+                            </span>
+                            {hasCurrentPrice && (
+                              <>
+                                <span className="text-ivory-600">→</span>
+                                <span className="text-gold-400 font-medium">
+                                  {(stock.currentPrice! / 100).toFixed(2)} €
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          {lastUpdated && (
+                            <p className="text-xs text-ivory-600 mt-1">
+                              Mis à jour : {lastUpdated.toLocaleString('fr-FR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-6">
                         <div className="text-right">
-                          <p className="font-semibold text-dark-100">
+                          <p className="font-semibold text-ivory-100 text-lg">
                             {(value / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
                           </p>
                           {hasCurrentPrice && gain !== null && gainPercent !== null ? (
-                            <div className={`flex items-center gap-1 text-sm ${gain >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {gain >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                              <span>{gain >= 0 ? '+' : ''}{(gain / 100).toFixed(2)} €</span>
-                              <span>({gainPercent >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%)</span>
+                            <div className={`flex items-center justify-end gap-2 text-sm ${gain >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {gain >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                              <span className="font-medium">{gain >= 0 ? '+' : ''}{(gain / 100).toFixed(2)} €</span>
+                              <span className="text-xs opacity-80">({gainPercent >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%)</span>
                             </div>
                           ) : (
-                            <p className="text-xs text-dark-500">Prix actuel non défini</p>
+                            <p className="text-xs text-ivory-600">Cliquez sur "Actualiser" pour le prix</p>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
                           <button
+                            onClick={() => openSellModal(stock, 'stock')}
+                            className="text-ivory-500 hover:text-emerald-400 transition-colors p-1"
+                            title="Vendre"
+                          >
+                            <BadgeDollarSign className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => openEditModal(stock, 'stocks')}
-                            className="text-dark-400 hover:text-accent-400 transition-colors p-1"
+                            className="text-ivory-500 hover:text-gold-400 transition-colors p-1"
+                            title="Modifier"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => removeStock(stock.id)}
-                            className="text-dark-400 hover:text-red-400 transition-colors p-1"
+                            className="text-ivory-500 hover:text-red-400 transition-colors p-1"
+                            title="Supprimer"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -411,73 +679,106 @@ export function FinancePage() {
 
       {/* Assets Tab */}
       {activeTab === 'assets' && (
-        <div className="space-y-4">
-          <h2 className="font-semibold text-dark-100">Objets de valeur</h2>
+        <div className="space-y-6">
+          <h2 className="font-semibold text-ivory-200">Objets de valeur</h2>
 
-          {assets.length === 0 ? (
+          {activeAssets.length === 0 ? (
             <Card className="text-center py-12">
-              <Package className="w-12 h-12 text-dark-500 mx-auto mb-4" />
-              <p className="text-dark-400">Aucun objet</p>
-              <button onClick={() => openAddModal('assets')} className="text-accent-400 text-sm mt-2">
+              <Package className="w-12 h-12 text-ivory-600 mx-auto mb-4" />
+              <p className="text-ivory-500">Aucun objet</p>
+              <button onClick={() => openAddModal('assets')} className="text-gold-400 text-sm mt-2">
                 + Ajouter un objet
               </button>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {assets.map((asset) => {
-                const gain = calculateAssetGain(asset);
-                const gainPercent = calculateAssetGainPercent(asset);
+            <>
+              {/* Group assets by category */}
+              {(() => {
+                const categories = [...new Set(activeAssets.map(a => a.category || 'Sans catégorie'))].sort();
+                return categories.map(category => {
+                  const categoryAssets = activeAssets.filter(a => (a.category || 'Sans catégorie') === category);
+                  const categoryTotal = categoryAssets.reduce((sum, a) => sum + a.currentValue, 0);
+                  const categoryGain = categoryAssets.reduce((sum, a) => sum + calculateAssetGain(a), 0);
 
-                return (
-                  <Card key={asset.id} padding="sm" hover>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="font-medium text-dark-100">{asset.name}</p>
-                          {asset.category && (
-                            <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full">
-                              {asset.category}
-                            </span>
-                          )}
+                  return (
+                    <div key={category} className="space-y-3">
+                      <div className="flex items-center justify-between border-b border-noir-700 pb-2">
+                        <h3 className="font-medium text-gold-400 flex items-center gap-2">
+                          <Package className="w-4 h-4" />
+                          {category}
+                          <span className="text-xs bg-noir-800 text-ivory-400 px-2 py-0.5 rounded-full">
+                            {categoryAssets.length}
+                          </span>
+                        </h3>
+                        <div className="text-right text-sm">
+                          <span className="text-ivory-300">{(categoryTotal / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</span>
+                          <span className={`ml-2 ${categoryGain >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            ({categoryGain >= 0 ? '+' : ''}{(categoryGain / 100).toFixed(2)} €)
+                          </span>
                         </div>
-                        {asset.description && (
-                          <p className="text-sm text-dark-400 mb-2">{asset.description}</p>
-                        )}
-                        <p className="text-xs text-dark-500">
-                          Acheté: {(asset.purchasePrice / 100).toFixed(2)} €
-                        </p>
                       </div>
-                      <div className="flex items-start gap-2">
-                        <div className="text-right">
-                          <p className="font-semibold text-dark-100">
-                            {(asset.currentValue / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
-                          </p>
-                          <div className={`flex items-center justify-end gap-1 text-sm ${gain >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {gain >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                            <span>{gain >= 0 ? '+' : ''}{(gain / 100).toFixed(2)} €</span>
-                            <span>({gainPercent >= 0 ? '+' : ''}{gainPercent.toFixed(1)}%)</span>
-                          </div>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <button
-                            onClick={() => openEditModal(asset, 'assets')}
-                            className="text-dark-400 hover:text-accent-400 transition-colors p-1"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => removeAsset(asset.id)}
-                            className="text-dark-400 hover:text-red-400 transition-colors p-1"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {categoryAssets.map((asset) => {
+                          const gain = calculateAssetGain(asset);
+                          const gainPercent = calculateAssetGainPercent(asset);
+
+                          return (
+                            <Card key={asset.id} padding="sm" hover>
+                              <div className="flex items-start justify-between">
+                                <div>
+                                  <p className="font-medium text-ivory-100">{asset.name}</p>
+                                  {asset.description && (
+                                    <p className="text-sm text-ivory-500 mb-2">{asset.description}</p>
+                                  )}
+                                  <p className="text-xs text-ivory-600">
+                                    Acheté: {(asset.purchasePrice / 100).toFixed(2)} €
+                                  </p>
+                                </div>
+                                <div className="flex items-start gap-2">
+                                  <div className="text-right">
+                                    <p className="font-semibold text-ivory-100">
+                                      {(asset.currentValue / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+                                    </p>
+                                    <div className={`flex items-center justify-end gap-1 text-sm ${gain >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                      {gain >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                      <span>{gain >= 0 ? '+' : ''}{(gain / 100).toFixed(2)} €</span>
+                                      <span>({gainPercent >= 0 ? '+' : ''}{gainPercent.toFixed(1)}%)</span>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-col gap-1">
+                                    <button
+                                      onClick={() => openSellModal(asset, 'asset')}
+                                      className="text-ivory-500 hover:text-emerald-400 transition-colors p-1"
+                                      title="Vendre"
+                                    >
+                                      <BadgeDollarSign className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => openEditModal(asset, 'assets')}
+                                      className="text-ivory-500 hover:text-gold-400 transition-colors p-1"
+                                      title="Modifier"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => removeAsset(asset.id)}
+                                      className="text-ivory-500 hover:text-red-400 transition-colors p-1"
+                                      title="Supprimer"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </Card>
+                          );
+                        })}
                       </div>
                     </div>
-                  </Card>
-                );
-              })}
-            </div>
+                  );
+                });
+              })()}
+            </>
           )}
         </div>
       )}
@@ -485,13 +786,13 @@ export function FinancePage() {
       {/* Cash Tab */}
       {activeTab === 'cash' && (
         <div className="space-y-4">
-          <h2 className="font-semibold text-dark-100">Comptes cash</h2>
+          <h2 className="font-semibold text-ivory-200">Comptes cash</h2>
 
           {cashAccounts.length === 0 ? (
             <Card className="text-center py-12">
-              <Wallet className="w-12 h-12 text-dark-500 mx-auto mb-4" />
-              <p className="text-dark-400">Aucun compte</p>
-              <button onClick={() => openAddModal('cash')} className="text-accent-400 text-sm mt-2">
+              <Wallet className="w-12 h-12 text-ivory-600 mx-auto mb-4" />
+              <p className="text-ivory-500">Aucun compte</p>
+              <button onClick={() => openAddModal('cash')} className="text-gold-400 text-sm mt-2">
                 + Ajouter un compte
               </button>
             </Card>
@@ -505,8 +806,8 @@ export function FinancePage() {
                         <Wallet className="w-5 h-5 text-emerald-400" />
                       </div>
                       <div>
-                        <p className="font-medium text-dark-100">{account.name}</p>
-                        <p className="text-xs text-dark-500">{account.currency}</p>
+                        <p className="font-medium text-ivory-100">{account.name}</p>
+                        <p className="text-xs text-ivory-600">{account.currency}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -516,13 +817,13 @@ export function FinancePage() {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => openEditModal(account, 'cash')}
-                          className="text-dark-400 hover:text-accent-400 transition-colors p-1"
+                          className="text-ivory-500 hover:text-gold-400 transition-colors p-1"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => removeCashAccount(account.id)}
-                          className="text-dark-400 hover:text-red-400 transition-colors p-1"
+                          className="text-ivory-500 hover:text-red-400 transition-colors p-1"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -536,6 +837,374 @@ export function FinancePage() {
         </div>
       )}
 
+      {/* Crypto Tab */}
+      {activeTab === 'crypto' && (
+        <div className="space-y-4">
+          <h2 className="font-semibold text-ivory-200">Cryptomonnaies</h2>
+
+          {activeCryptos.length === 0 ? (
+            <Card className="text-center py-12">
+              <Bitcoin className="w-12 h-12 text-ivory-600 mx-auto mb-4" />
+              <p className="text-ivory-500">Aucune crypto</p>
+              <button onClick={() => openAddModal('crypto')} className="text-gold-400 text-sm mt-2">
+                + Ajouter une crypto
+              </button>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {activeCryptos.map((crypto) => {
+                const value = calculateCryptoValue(crypto);
+                const gain = calculateCryptoGain(crypto);
+                const gainPercent = calculateCryptoGainPercent(crypto);
+                const hasCurrentPrice = crypto.currentPrice !== undefined;
+
+                return (
+                  <Card key={crypto.id} padding="sm" hover>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center">
+                          <Bitcoin className="w-6 h-6 text-orange-400" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-ivory-100">{crypto.name}</p>
+                          <div className="flex items-center gap-3 text-sm">
+                            <span className="text-gold-400 font-bold">{crypto.symbol}</span>
+                            <span className="text-ivory-500">
+                              {crypto.quantity} × {(crypto.purchasePrice / 100).toFixed(2)} €
+                            </span>
+                            {hasCurrentPrice && (
+                              <>
+                                <span className="text-ivory-600">→</span>
+                                <span className="text-gold-400 font-medium">
+                                  {(crypto.currentPrice! / 100).toFixed(2)} €
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-6">
+                        <div className="text-right">
+                          <p className="font-semibold text-ivory-100 text-lg">
+                            {(value / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+                          </p>
+                          {hasCurrentPrice && gain !== null && gainPercent !== null ? (
+                            <div className={`flex items-center justify-end gap-2 text-sm ${gain >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {gain >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                              <span className="font-medium">{gain >= 0 ? '+' : ''}{(gain / 100).toFixed(2)} €</span>
+                              <span className="text-xs opacity-80">({gainPercent >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%)</span>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-ivory-600">Prix actuel non défini</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openSellModal(crypto, 'crypto')}
+                            className="text-ivory-500 hover:text-emerald-400 transition-colors p-1"
+                            title="Vendre"
+                          >
+                            <BadgeDollarSign className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              resetForms();
+                              setEditingItem(crypto as unknown as Stock);
+                              setCryptoSymbol(crypto.symbol);
+                              setCryptoName(crypto.name);
+                              setCryptoQuantity(crypto.quantity.toString());
+                              setCryptoPurchasePrice((crypto.purchasePrice / 100).toString());
+                              setCryptoCurrentPrice(crypto.currentPrice ? (crypto.currentPrice / 100).toString() : '');
+                              setCryptoPurchaseDate(crypto.purchaseDate);
+                              setModalType('crypto');
+                              setIsModalOpen(true);
+                            }}
+                            className="text-ivory-500 hover:text-gold-400 transition-colors p-1"
+                            title="Modifier"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => removeCrypto(crypto.id)}
+                            className="text-ivory-500 hover:text-red-400 transition-colors p-1"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Summary */}
+          {activeCryptos.length > 0 && (
+            <Card className="mt-6 bg-orange-500/5 border-orange-500/20">
+              <div className="flex justify-between items-center">
+                <span className="text-ivory-300">Total Crypto</span>
+                <div className="text-right">
+                  <p className="text-lg font-semibold text-ivory-100">
+                    {(totalCryptosValue / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+                  </p>
+                  <p className={`text-sm ${totalCryptosGain >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {totalCryptosGain >= 0 ? '+' : ''}{(totalCryptosGain / 100).toFixed(2)} €
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Sold Tab */}
+      {activeTab === 'sold' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-ivory-200">Historique des ventes</h2>
+            <div className="flex gap-2">
+              {(['all', 'stocks', 'crypto', 'assets'] as const).map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setSoldFilter(filter)}
+                  className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                    soldFilter === filter
+                      ? 'bg-gold-400/10 text-gold-400'
+                      : 'text-ivory-500 hover:bg-noir-800/50'
+                  }`}
+                >
+                  {filter === 'all' ? 'Tout' : filter === 'stocks' ? 'Actions' : filter === 'crypto' ? 'Crypto' : 'Objets'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {totalSoldCount === 0 ? (
+            <Card className="text-center py-12">
+              <History className="w-12 h-12 text-ivory-600 mx-auto mb-4" />
+              <p className="text-ivory-500">Aucune vente enregistrée</p>
+            </Card>
+          ) : (
+            <>
+              {/* Sold Stocks */}
+              {(soldFilter === 'all' || soldFilter === 'stocks') && soldStocks.length > 0 && (
+                <div>
+                  <h3 className="font-medium text-ivory-300 mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-gold-400" />
+                    Actions vendues ({soldStocks.length})
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-noir-700">
+                          <th className="text-left py-3 px-4 text-ivory-500 text-xs uppercase">Ticker</th>
+                          <th className="text-left py-3 px-4 text-ivory-500 text-xs uppercase">Nom</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Qté</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Prix achat</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Prix vente</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Plus-value</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">%</th>
+                          <th className="text-left py-3 px-4 text-ivory-500 text-xs uppercase">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {soldStocks.map((stock) => {
+                          const totalBuy = stock.purchasePrice * stock.quantity;
+                          const totalSell = (stock.salePrice || 0) * stock.quantity;
+                          const profit = totalSell - totalBuy;
+                          const profitPercent = ((stock.salePrice || 0) - stock.purchasePrice) / stock.purchasePrice * 100;
+
+                          return (
+                            <tr key={stock.id} className="border-b border-noir-800/50 hover:bg-noir-800/30">
+                              <td className="py-3 px-4 font-medium text-gold-400">{stock.ticker}</td>
+                              <td className="py-3 px-4 text-ivory-300">{stock.name}</td>
+                              <td className="py-3 px-4 text-right text-ivory-400">{stock.quantity}</td>
+                              <td className="py-3 px-4 text-right text-ivory-400">{(stock.purchasePrice / 100).toFixed(2)} €</td>
+                              <td className="py-3 px-4 text-right text-ivory-200">{((stock.salePrice || 0) / 100).toFixed(2)} €</td>
+                              <td className={`py-3 px-4 text-right font-medium ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {profit >= 0 ? '+' : ''}{(profit / 100).toFixed(2)} €
+                              </td>
+                              <td className={`py-3 px-4 text-right ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(1)}%
+                              </td>
+                              <td className="py-3 px-4 text-ivory-500">{stock.saleDate || '-'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <Card className="mt-3 bg-gold-400/5 border-gold-400/20">
+                    <div className="flex justify-between items-center">
+                      <span className="text-ivory-400">Total plus-values Actions</span>
+                      <span className={`font-semibold ${soldStocksProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {soldStocksProfit >= 0 ? '+' : ''}{(soldStocksProfit / 100).toFixed(2)} €
+                      </span>
+                    </div>
+                  </Card>
+                </div>
+              )}
+
+              {/* Sold Cryptos */}
+              {(soldFilter === 'all' || soldFilter === 'crypto') && soldCryptos.length > 0 && (
+                <div>
+                  <h3 className="font-medium text-ivory-300 mb-3 flex items-center gap-2">
+                    <Bitcoin className="w-4 h-4 text-orange-400" />
+                    Crypto vendues ({soldCryptos.length})
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-noir-700">
+                          <th className="text-left py-3 px-4 text-ivory-500 text-xs uppercase">Symbol</th>
+                          <th className="text-left py-3 px-4 text-ivory-500 text-xs uppercase">Nom</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Qté</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Prix achat</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Prix vente</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Plus-value</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">%</th>
+                          <th className="text-left py-3 px-4 text-ivory-500 text-xs uppercase">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {soldCryptos.map((crypto) => {
+                          const totalBuy = crypto.purchasePrice * crypto.quantity;
+                          const totalSell = (crypto.salePrice || 0) * crypto.quantity;
+                          const profit = totalSell - totalBuy;
+                          const profitPercent = ((crypto.salePrice || 0) - crypto.purchasePrice) / crypto.purchasePrice * 100;
+
+                          return (
+                            <tr key={crypto.id} className="border-b border-noir-800/50 hover:bg-noir-800/30">
+                              <td className="py-3 px-4 font-medium text-orange-400">{crypto.symbol}</td>
+                              <td className="py-3 px-4 text-ivory-300">{crypto.name}</td>
+                              <td className="py-3 px-4 text-right text-ivory-400">{crypto.quantity}</td>
+                              <td className="py-3 px-4 text-right text-ivory-400">{(crypto.purchasePrice / 100).toFixed(2)} €</td>
+                              <td className="py-3 px-4 text-right text-ivory-200">{((crypto.salePrice || 0) / 100).toFixed(2)} €</td>
+                              <td className={`py-3 px-4 text-right font-medium ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {profit >= 0 ? '+' : ''}{(profit / 100).toFixed(2)} €
+                              </td>
+                              <td className={`py-3 px-4 text-right ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(1)}%
+                              </td>
+                              <td className="py-3 px-4 text-ivory-500">{crypto.saleDate || '-'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <Card className="mt-3 bg-orange-500/5 border-orange-500/20">
+                    <div className="flex justify-between items-center">
+                      <span className="text-ivory-400">Total plus-values Crypto</span>
+                      <span className={`font-semibold ${soldCryptosProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {soldCryptosProfit >= 0 ? '+' : ''}{(soldCryptosProfit / 100).toFixed(2)} €
+                      </span>
+                    </div>
+                  </Card>
+                </div>
+              )}
+
+              {/* Sold Assets */}
+              {(soldFilter === 'all' || soldFilter === 'assets') && soldAssets.length > 0 && (
+                <div>
+                  <h3 className="font-medium text-ivory-300 mb-3 flex items-center gap-2">
+                    <Package className="w-4 h-4 text-ivory-400" />
+                    Objets vendus ({soldAssets.length})
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-noir-700">
+                          <th className="text-left py-3 px-4 text-ivory-500 text-xs uppercase">Nom</th>
+                          <th className="text-left py-3 px-4 text-ivory-500 text-xs uppercase">Catégorie</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Prix achat</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Prix vente</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Plus-value</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">%</th>
+                          <th className="text-left py-3 px-4 text-ivory-500 text-xs uppercase">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {soldAssets.map((asset) => {
+                          const profit = (asset.salePrice || 0) - asset.purchasePrice;
+                          const profitPercent = ((asset.salePrice || 0) - asset.purchasePrice) / asset.purchasePrice * 100;
+
+                          return (
+                            <tr key={asset.id} className="border-b border-noir-800/50 hover:bg-noir-800/30">
+                              <td className="py-3 px-4 font-medium text-ivory-200">{asset.name}</td>
+                              <td className="py-3 px-4 text-ivory-400">{asset.category || '-'}</td>
+                              <td className="py-3 px-4 text-right text-ivory-400">{(asset.purchasePrice / 100).toFixed(2)} €</td>
+                              <td className="py-3 px-4 text-right text-ivory-200">{((asset.salePrice || 0) / 100).toFixed(2)} €</td>
+                              <td className={`py-3 px-4 text-right font-medium ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {profit >= 0 ? '+' : ''}{(profit / 100).toFixed(2)} €
+                              </td>
+                              <td className={`py-3 px-4 text-right ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(1)}%
+                              </td>
+                              <td className="py-3 px-4 text-ivory-500">{asset.saleDate || '-'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <Card className="mt-3 bg-ivory-500/5 border-ivory-500/20">
+                    <div className="flex justify-between items-center">
+                      <span className="text-ivory-400">Total plus-values Objets</span>
+                      <span className={`font-semibold ${soldAssetsProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {soldAssetsProfit >= 0 ? '+' : ''}{(soldAssetsProfit / 100).toFixed(2)} €
+                      </span>
+                    </div>
+                  </Card>
+                </div>
+              )}
+
+              {/* Grand Total */}
+              <Card glow className="mt-6">
+                <h3 className="text-lg font-semibold text-ivory-100 mb-4">Résumé Total des Plus-Values</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center py-2 border-b border-noir-700">
+                    <span className="text-ivory-400 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-gold-400" />
+                      Actions
+                    </span>
+                    <span className={`font-medium ${soldStocksProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {soldStocksProfit >= 0 ? '+' : ''}{(soldStocksProfit / 100).toFixed(2)} €
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-noir-700">
+                    <span className="text-ivory-400 flex items-center gap-2">
+                      <Bitcoin className="w-4 h-4 text-orange-400" />
+                      Crypto
+                    </span>
+                    <span className={`font-medium ${soldCryptosProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {soldCryptosProfit >= 0 ? '+' : ''}{(soldCryptosProfit / 100).toFixed(2)} €
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-noir-700">
+                    <span className="text-ivory-400 flex items-center gap-2">
+                      <Package className="w-4 h-4 text-ivory-400" />
+                      Objets
+                    </span>
+                    <span className={`font-medium ${soldAssetsProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {soldAssetsProfit >= 0 ? '+' : ''}{(soldAssetsProfit / 100).toFixed(2)} €
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center pt-3 mt-2 border-t-2 border-gold-400/30">
+                    <span className="text-ivory-200 font-semibold text-lg">TOTAL</span>
+                    <span className={`text-2xl font-bold ${totalSoldProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {totalSoldProfit >= 0 ? '+' : ''}{(totalSoldProfit / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+                    </span>
+                  </div>
+                </div>
+              </Card>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Stock Modal */}
       <Modal
         isOpen={isModalOpen && modalType === 'stocks'}
@@ -543,6 +1212,43 @@ export function FinancePage() {
         title={editingItem ? 'Modifier l\'action' : 'Nouvelle action'}
       >
         <div className="space-y-4">
+          {/* Search section */}
+          {!editingItem && (
+            <div className="relative">
+              <label className="label">Rechercher une entreprise</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-noir-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Ex: Apple, Microsoft, Tesla..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-noir-300 rounded-lg text-noir-900 placeholder-noir-400 focus:outline-none focus:ring-1 focus:ring-gold-400/30 focus:border-gold-400/40"
+                />
+                {isSearching && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gold-400 animate-spin" />
+                )}
+              </div>
+              {searchResults.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-noir-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {searchResults.map((result) => (
+                    <button
+                      key={result.symbol}
+                      onClick={() => selectStock(result.symbol, result.name)}
+                      className="w-full px-4 py-2 text-left hover:bg-gold-50 flex justify-between items-center border-b border-noir-100 last:border-0"
+                    >
+                      <div>
+                        <span className="font-medium text-noir-900">{result.symbol}</span>
+                        <span className="text-noir-500 ml-2 text-sm">{result.name}</span>
+                      </div>
+                      <span className="text-xs text-noir-400">{result.exchange}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="Ticker (symbole)"
@@ -581,7 +1287,7 @@ export function FinancePage() {
             value={stockPurchaseDate}
             onChange={(e) => setStockPurchaseDate(e.target.value)}
           />
-          <div className="border-t border-dark-700 pt-4">
+          <div className="border-t border-noir-700 pt-4">
             <Input
               label="Prix actuel (€) - Optionnel, sinon via API"
               type="number"
@@ -590,7 +1296,7 @@ export function FinancePage() {
               onChange={(e) => setStockCurrentPrice(e.target.value)}
               placeholder="Laisser vide pour utiliser l'API"
             />
-            <p className="text-xs text-dark-500 mt-1">
+            <p className="text-xs text-ivory-600 mt-1">
               Si vous laissez vide, cliquez sur "Actualiser les prix" pour récupérer le prix via Yahoo Finance.
             </p>
           </div>
@@ -625,21 +1331,30 @@ export function FinancePage() {
             placeholder="Détails..."
           />
           <div>
-            <label className="block text-sm font-medium text-dark-300 mb-1.5">Catégorie</label>
-            <select
+            <label className="label">Catégorie</label>
+            <input
+              type="text"
+              list="asset-categories"
               value={assetCategory}
               onChange={(e) => setAssetCategory(e.target.value)}
-              className="input"
-            >
-              <option value="">Sélectionner...</option>
-              <option value="Montre">Montre</option>
-              <option value="Voiture">Voiture</option>
-              <option value="Art">Art</option>
-              <option value="Bijoux">Bijoux</option>
-              <option value="Electronique">Électronique</option>
-              <option value="Collection">Collection</option>
-              <option value="Autre">Autre</option>
-            </select>
+              placeholder="Ex: Montre, Voiture, Art..."
+              className="w-full px-4 py-2.5 bg-white border border-noir-300 rounded-lg text-noir-900 placeholder-noir-400 focus:outline-none focus:ring-1 focus:ring-gold-400/30 focus:border-gold-400/40"
+            />
+            <datalist id="asset-categories">
+              {/* Suggestions from existing categories */}
+              {[...new Set(assets.map(a => a.category).filter(Boolean))].map(cat => (
+                <option key={cat} value={cat} />
+              ))}
+              {/* Default suggestions */}
+              <option value="Montre" />
+              <option value="Voiture" />
+              <option value="Art" />
+              <option value="Bijoux" />
+              <option value="Electronique" />
+              <option value="Collection" />
+              <option value="Immobilier" />
+              <option value="Mode" />
+            </datalist>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input
@@ -698,7 +1413,7 @@ export function FinancePage() {
             placeholder="1500.00"
           />
           <div>
-            <label className="block text-sm font-medium text-dark-300 mb-1.5">Devise</label>
+            <label className="label">Devise</label>
             <select
               value={cashCurrency}
               onChange={(e) => setCashCurrency(e.target.value)}
@@ -716,6 +1431,134 @@ export function FinancePage() {
             </Button>
             <Button className="flex-1" onClick={handleSubmitCash}>
               {editingItem ? 'Modifier' : 'Ajouter'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Crypto Modal */}
+      <Modal
+        isOpen={isModalOpen && modalType === 'crypto'}
+        onClose={() => { setIsModalOpen(false); resetForms(); }}
+        title={editingItem ? 'Modifier la crypto' : 'Nouvelle crypto'}
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Symbole"
+              value={cryptoSymbol}
+              onChange={(e) => setCryptoSymbol(e.target.value.toUpperCase())}
+              placeholder="BTC"
+            />
+            <Input
+              label="Nom"
+              value={cryptoName}
+              onChange={(e) => setCryptoName(e.target.value)}
+              placeholder="Bitcoin"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Quantité"
+              type="number"
+              step="0.00000001"
+              value={cryptoQuantity}
+              onChange={(e) => setCryptoQuantity(e.target.value)}
+              placeholder="0.5"
+            />
+            <Input
+              label="Prix d'achat unitaire (€)"
+              type="number"
+              step="0.01"
+              value={cryptoPurchasePrice}
+              onChange={(e) => setCryptoPurchasePrice(e.target.value)}
+              placeholder="45000.00"
+            />
+          </div>
+          <Input
+            label="Date d'achat"
+            type="date"
+            value={cryptoPurchaseDate}
+            onChange={(e) => setCryptoPurchaseDate(e.target.value)}
+          />
+          <div className="border-t border-noir-700 pt-4">
+            <Input
+              label="Prix actuel unitaire (€) - Optionnel"
+              type="number"
+              step="0.01"
+              value={cryptoCurrentPrice}
+              onChange={(e) => setCryptoCurrentPrice(e.target.value)}
+              placeholder="50000.00"
+            />
+            <p className="text-xs text-ivory-600 mt-1">
+              Entrez manuellement le prix actuel pour calculer vos gains.
+            </p>
+          </div>
+          <div className="flex gap-3 pt-4">
+            <Button variant="secondary" className="flex-1" onClick={() => setIsModalOpen(false)}>
+              Annuler
+            </Button>
+            <Button className="flex-1" onClick={handleSubmitCrypto}>
+              {editingItem ? 'Modifier' : 'Ajouter'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Sell Modal */}
+      <Modal
+        isOpen={isSellModalOpen}
+        onClose={() => { setIsSellModalOpen(false); setSellingItem(null); }}
+        title="Vendre"
+      >
+        <div className="space-y-4">
+          {sellingItem && (
+            <div className="bg-noir-800/50 rounded-lg p-4 mb-4">
+              <p className="text-ivory-200 font-medium">
+                {'ticker' in sellingItem ? `${sellingItem.ticker} - ${sellingItem.name}` : sellingItem.name}
+              </p>
+              <p className="text-sm text-ivory-500 mt-1">
+                Prix d'achat : {(sellingItem.purchasePrice / 100).toFixed(2)} €
+                {'quantity' in sellingItem && ` × ${sellingItem.quantity}`}
+              </p>
+            </div>
+          )}
+          <Input
+            label="Prix de vente (€)"
+            type="number"
+            step="0.01"
+            value={sellPrice}
+            onChange={(e) => setSellPrice(e.target.value)}
+            placeholder="0.00"
+          />
+          <Input
+            label="Date de vente"
+            type="date"
+            value={sellDate}
+            onChange={(e) => setSellDate(e.target.value)}
+          />
+          {sellingItem && sellPrice && (
+            <div className="bg-noir-800/50 rounded-lg p-4">
+              <p className="text-sm text-ivory-500">Plus-value estimée :</p>
+              {(() => {
+                const salePriceNum = parseFloat(sellPrice) * 100;
+                const quantity = 'quantity' in sellingItem ? sellingItem.quantity : 1;
+                const profit = (salePriceNum - sellingItem.purchasePrice) * quantity;
+                const profitPercent = (salePriceNum - sellingItem.purchasePrice) / sellingItem.purchasePrice * 100;
+                return (
+                  <p className={`text-xl font-semibold ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {profit >= 0 ? '+' : ''}{(profit / 100).toFixed(2)} € ({profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(1)}%)
+                  </p>
+                );
+              })()}
+            </div>
+          )}
+          <div className="flex gap-3 pt-4">
+            <Button variant="secondary" className="flex-1" onClick={() => setIsSellModalOpen(false)}>
+              Annuler
+            </Button>
+            <Button className="flex-1" onClick={handleSell}>
+              Confirmer la vente
             </Button>
           </div>
         </div>

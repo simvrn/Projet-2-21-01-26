@@ -36,30 +36,37 @@ export interface ExpenseCategory {
   color: string;
 }
 
-// === FOOD ===
-export interface Dish {
+// === CHRONIQUES (Structure hierarchique extensible) ===
+// Niveau 1 : Section (ex: Chroniques, ou sections ajoutees dynamiquement)
+export interface ChronicleSection {
   id: string;
   name: string;
-  details: string;
-  images: string[]; // Base64 URLs
-  status: 'done' | 'todo';
+  image?: string; // Base64 ou URL
+  order: number;
   createdAt: string;
 }
 
-// === BIOGRAPHY (PERSONNES INSPIRANTES) ===
-export interface PersonCategory {
+// Niveau 2 : Sous-theme (a l'interieur d'une section)
+export interface ChronicleSubTheme {
   id: string;
-  name: string; // "Entrepreneur", "Philosophe", "Artiste", etc.
-  color: string;
+  sectionId: string;
+  name: string;
+  image?: string;
+  description?: string;
+  order: number;
+  createdAt: string;
 }
 
-export interface Person {
+// Niveau 3 : Entree (sous-sous-theme - contenu principal)
+export interface ChronicleEntry {
   id: string;
+  subThemeId: string;
   name: string;
-  image: string | null;
-  categoryId: string;
-  description: string; // Texte libre
-  qualities: string[]; // Liste de qualités/caractéristiques
+  image?: string;
+  category?: string;
+  description?: string;
+  annexe?: string; // Contenu complementaire libre
+  order: number;
   createdAt: string;
 }
 
@@ -84,8 +91,10 @@ export interface RoutineCompletion {
 
 // === CHALLENGES ===
 export interface Challenge {
+  id: string;
   month: string; // "2025-01"
   content: string;
+  completed: boolean;
 }
 
 // === CALENDAR ===
@@ -115,6 +124,10 @@ export interface Stock {
   purchaseDate: string;
   currentPrice?: number; // Prix actuel en centimes (API ou manuel)
   lastUpdated?: string;
+  // Vente
+  sold?: boolean;
+  salePrice?: number; // Prix de vente unitaire en centimes
+  saleDate?: string;
   createdAt: string;
 }
 
@@ -126,6 +139,10 @@ export interface Asset {
   currentValue: number; // Valeur estimée en centimes
   purchaseDate?: string;
   category?: string; // "Montre", "Voiture", "Art", etc.
+  // Vente
+  sold?: boolean;
+  salePrice?: number; // Prix de vente en centimes
+  saleDate?: string;
   createdAt: string;
 }
 
@@ -134,6 +151,22 @@ export interface CashAccount {
   name: string; // "Compte courant", "Livret A", etc.
   balance: number; // En centimes
   currency: string; // "EUR", "USD"
+  createdAt: string;
+}
+
+export interface Crypto {
+  id: string;
+  symbol: string; // Ex: "BTC", "ETH"
+  name: string;
+  quantity: number;
+  purchasePrice: number; // Prix unitaire en centimes
+  purchaseDate: string;
+  currentPrice?: number;
+  lastUpdated?: string;
+  // Vente
+  sold?: boolean;
+  salePrice?: number;
+  saleDate?: string;
   createdAt: string;
 }
 

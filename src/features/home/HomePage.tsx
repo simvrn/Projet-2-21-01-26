@@ -3,14 +3,13 @@ import { Card } from '@/components/ui';
 import {
   Target,
   Wallet,
-  UtensilsCrossed,
-  Users,
   CheckSquare,
   Trophy,
   ArrowRight,
-  Sparkles,
   Clock,
   TrendingUp,
+  Calendar,
+  BookOpen,
 } from 'lucide-react';
 import { differenceInDays, differenceInMilliseconds } from 'date-fns';
 
@@ -20,46 +19,46 @@ const modules = [
     label: 'Objectifs',
     description: 'Suivi du temps et progression',
     icon: Target,
-    gradient: 'from-cyan-500 to-blue-500',
+  },
+  {
+    path: '/calendar',
+    label: 'Calendrier',
+    description: 'Evenements et planification',
+    icon: Calendar,
   },
   {
     path: '/expenses',
-    label: 'Dépenses',
-    description: 'Gestion budgétaire mensuelle',
+    label: 'Depenses',
+    description: 'Gestion budgetaire mensuelle',
     icon: Wallet,
-    gradient: 'from-emerald-500 to-teal-500',
   },
   {
-    path: '/food',
-    label: 'Nourriture',
-    description: 'Bibliothèque de plats',
-    icon: UtensilsCrossed,
-    gradient: 'from-orange-500 to-amber-500',
+    path: '/finance',
+    label: 'Finance',
+    description: 'Actions et patrimoine',
+    icon: TrendingUp,
   },
   {
-    path: '/biography',
-    label: 'Biographie',
-    description: 'Personnes inspirantes',
-    icon: Users,
-    gradient: 'from-violet-500 to-purple-500',
+    path: '/chroniques',
+    label: 'Chroniques',
+    description: 'Structure hierarchique extensible',
+    icon: BookOpen,
   },
   {
     path: '/routines',
     label: 'Routines',
     description: 'Habitudes quotidiennes',
     icon: CheckSquare,
-    gradient: 'from-pink-500 to-rose-500',
   },
   {
     path: '/challenges',
-    label: 'Défis',
+    label: 'Defis',
     description: 'Objectifs mensuels',
     icon: Trophy,
-    gradient: 'from-yellow-500 to-orange-500',
   },
 ];
 
-// Dates de référence
+// Dates de reference
 const START_DATE = new Date(2026, 0, 1); // 1er janvier 2026
 const END_DATE = new Date(2027, 0, 1);   // 1er janvier 2027
 
@@ -69,7 +68,7 @@ function getTimeProgress() {
   const elapsed = differenceInMilliseconds(now, START_DATE);
   const daysRemaining = differenceInDays(END_DATE, now);
 
-  // Calcul du pourcentage écoulé
+  // Calcul du pourcentage ecoule
   let percentElapsed = (elapsed / totalDuration) * 100;
   percentElapsed = Math.max(0, Math.min(100, percentElapsed));
 
@@ -87,24 +86,19 @@ export function HomePage() {
   const { daysRemaining, percentElapsed, percentRemaining } = getTimeProgress();
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-16">
       {/* Hero Section */}
-      <section className="text-center py-16 relative">
-        <div className="absolute inset-0 bg-glow-accent opacity-30" />
+      <section className="text-center py-20 relative">
+        <div className="absolute inset-0 bg-glow-warm opacity-30" />
         <div className="relative">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Sparkles className="w-6 h-6 text-accent-400" />
-            <span className="text-sm font-medium text-accent-400 uppercase tracking-wider">
-              Dashboard Personnel
-            </span>
-          </div>
-          <h1 className="text-5xl font-bold mb-6">
-            <span className="text-dark-100">Life </span>
-            <span className="text-gradient">Dashboard</span>
+          <p className="text-xs uppercase tracking-wider text-gold-400 mb-6 font-medium">
+            Can you hear the music Simon ?
+          </p>
+          <h1 className="text-5xl md:text-6xl font-serif text-ivory-100 mb-6 tracking-tight">
+            We are in the simulation
           </h1>
-          <p className="text-lg text-dark-300 max-w-2xl mx-auto leading-relaxed">
-            Organise ta vie, atteins tes objectifs. Un espace minimaliste pour
-            suivre ta progression et rester concentré sur l'essentiel.
+          <p className="text-lg text-ivory-400 max-w-xl mx-auto leading-relaxed">
+            Life is a game played with itself so you have to be the best everywhere
           </p>
         </div>
       </section>
@@ -113,73 +107,104 @@ export function HomePage() {
       <section>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Jours restants */}
-          <Card glow className="text-center">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-accent-500 to-accent-600 shadow-glow-sm">
-                <Clock className="w-6 h-6 text-white" />
+          <Card glow className="text-center py-10">
+            <div className="flex items-center justify-center gap-3 mb-6">
+              <div className="p-3 rounded-lg bg-gold-400/10 border border-gold-400/20">
+                <Clock className="w-5 h-5 text-gold-400" />
               </div>
-              <h2 className="text-lg font-semibold text-dark-100">Compte à rebours</h2>
             </div>
-            <p className="text-5xl font-bold text-gradient mb-2">{daysRemaining}</p>
-            <p className="text-dark-400">jours restants jusqu'au 1er janvier 2027</p>
+            <p className="text-5xl font-serif text-ivory-100 mb-2">
+              {daysRemaining}
+            </p>
+            <p className="text-sm text-ivory-500 uppercase tracking-wider">
+              jours restants
+            </p>
+            <p className="text-xs text-ivory-600 mt-2">
+              jusqu'au 1er janvier 2027
+            </p>
           </Card>
 
           {/* Pourcentage de progression */}
-          <Card className="text-center">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-secondary-500 to-secondary-600 shadow-lg">
-                <TrendingUp className="w-6 h-6 text-white" />
+          <Card className="text-center py-10">
+            <div className="flex items-center justify-center gap-3 mb-6">
+              <div className="p-3 rounded-lg bg-gold-400/10 border border-gold-400/20">
+                <TrendingUp className="w-5 h-5 text-gold-400" />
               </div>
-              <h2 className="text-lg font-semibold text-dark-100">Progression 2026</h2>
             </div>
-            <div className="flex items-center justify-center gap-6 mb-4">
+            <div className="flex items-center justify-center gap-8 mb-6">
               <div>
-                <p className="text-4xl font-bold text-secondary-400">{percentRemaining}%</p>
-                <p className="text-sm text-dark-400">restant</p>
+                <p className="text-4xl font-serif text-ivory-100">
+                  {percentRemaining}%
+                </p>
+                <p className="text-xs text-ivory-500 uppercase tracking-wider mt-1">restant</p>
               </div>
-              <div className="h-12 w-px bg-dark-700" />
+              <div className="h-10 w-px bg-noir-700" />
               <div>
-                <p className="text-4xl font-bold text-dark-300">{percentElapsed}%</p>
-                <p className="text-sm text-dark-400">écoulé</p>
+                <p className="text-4xl font-serif text-ivory-500">
+                  {percentElapsed}%
+                </p>
+                <p className="text-xs text-ivory-600 uppercase tracking-wider mt-1">ecoule</p>
               </div>
             </div>
             {/* Progress bar */}
-            <div className="h-3 bg-dark-700 rounded-full overflow-hidden">
+            <div className="h-1 bg-noir-800 rounded-full overflow-hidden max-w-xs mx-auto">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-secondary-500 to-accent-500 transition-all duration-1000"
-                style={{ width: `${percentElapsed}%` }}
+                className="h-full rounded-full transition-all duration-1000"
+                style={{
+                  width: `${percentElapsed}%`,
+                  background: 'linear-gradient(90deg, #725636, #c4ac78)',
+                }}
               />
             </div>
-            <p className="text-xs text-dark-500 mt-2">1er janvier 2026 → 1er janvier 2027</p>
+            <p className="text-xs text-ivory-600 mt-4">
+              2026 - 2027
+            </p>
           </Card>
         </div>
       </section>
 
       {/* Modules Grid */}
       <section>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {modules.map(({ path, label, description, icon: Icon, gradient }) => (
+        <div className="flex items-center justify-between mb-8">
+          <h2 className="text-2xl font-serif text-ivory-200">
+            Modules
+          </h2>
+          <span className="text-xs text-ivory-600 uppercase tracking-wider">
+            {modules.length} disponibles
+          </span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {modules.map(({ path, label, description, icon: Icon }) => (
             <Link key={path} to={path}>
               <Card
                 hover
                 className="h-full cursor-pointer group"
               >
                 <div className="flex items-start gap-4">
-                  <div className={`p-3 rounded-xl bg-gradient-to-br ${gradient} shadow-lg`}>
-                    <Icon className="w-6 h-6 text-white" />
+                  <div className="p-3 rounded-lg bg-surface-elevated border border-noir-700 group-hover:border-gold-400/30 transition-colors">
+                    <Icon className="w-5 h-5 text-ivory-400 group-hover:text-gold-400 transition-colors" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-dark-100 group-hover:text-accent-400 transition-colors">
+                    <h3 className="font-medium text-ivory-200 group-hover:text-gold-400 transition-colors">
                       {label}
                     </h3>
-                    <p className="text-sm text-dark-400 mt-1">{description}</p>
+                    <p className="text-sm text-ivory-500 mt-1">
+                      {description}
+                    </p>
                   </div>
-                  <ArrowRight className="w-5 h-5 text-dark-500 group-hover:text-accent-400 group-hover:translate-x-1 transition-all" />
+                  <ArrowRight className="w-4 h-4 text-ivory-600 group-hover:text-gold-400 group-hover:translate-x-1 transition-all" />
                 </div>
               </Card>
             </Link>
           ))}
         </div>
+      </section>
+
+      {/* Footer hint */}
+      <section className="text-center py-8">
+        <p className="text-ivory-600 text-sm">
+          Systeme personnel confidentiel
+        </p>
       </section>
     </div>
   );

@@ -388,7 +388,7 @@ export function ExpenseMonthPage() {
                       ? 'ring-2 ring-offset-2 ring-offset-surface-light scale-110'
                       : 'hover:scale-105'
                   }`}
-                  style={{ backgroundColor: color, ringColor: color }}
+                  style={{ backgroundColor: color }}
                 />
               ))}
             </div>
