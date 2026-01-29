@@ -52,12 +52,26 @@ export function CalendarPage() {
   const [formEndTime, setFormEndTime] = useState('');
   const [formAllDay, setFormAllDay] = useState(true);
   const [formColor, setFormColor] = useState('#3b82f6');
+  const [endTimeManuallySet, setEndTimeManuallySet] = useState(false);
 
   const { events, fetchEvents, addEvent, updateEvent, removeEvent, toggleTaskComplete } = useCalendarStore();
 
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
+
+  // Auto-fill: si l'utilisateur n'a pas touché au champ fin, fin = début + 1h
+  const addOneHour = (time: string): string => {
+    const [h, m] = time.split(':').map(Number);
+    const newH = (h + 1) % 24;
+    return `${String(newH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    if (!endTimeManuallySet && formStartTime) {
+      setFormEndTime(addOneHour(formStartTime));
+    }
+  }, [formStartTime, endTimeManuallySet]);
 
   const resetForm = () => {
     setFormTitle('');
@@ -69,6 +83,7 @@ export function CalendarPage() {
     setFormAllDay(true);
     setFormColor('#3b82f6');
     setEditingEvent(null);
+    setEndTimeManuallySet(false);
   };
 
   const openAddModal = (date?: Date) => {
@@ -82,6 +97,7 @@ export function CalendarPage() {
 
   const openEditModal = (event: CalendarEvent) => {
     setEditingEvent(event);
+    setEndTimeManuallySet(true); // Préserver l'heure de fin existante
     setFormTitle(event.title);
     setFormDescription(event.description || '');
     setFormType(event.type);
@@ -244,7 +260,7 @@ export function CalendarPage() {
                 onClick={() => openAddModal(day)}
                 className={`min-h-[100px] ${view === 'week' ? 'min-h-[500px]' : ''} p-2 border-b border-r border-dark-700/50 cursor-pointer hover:bg-dark-700/30 transition-colors ${
                   !isCurrentMonth ? 'bg-dark-800/30' : ''
-                }`}
+                } ${isToday ? 'ring-2 ring-inset ring-white' : ''}`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span
@@ -403,7 +419,10 @@ export function CalendarPage() {
                 <input
                   type="time"
                   value={formEndTime}
-                  onChange={(e) => setFormEndTime(e.target.value)}
+                  onChange={(e) => {
+                    setFormEndTime(e.target.value);
+                    setEndTimeManuallySet(true);
+                  }}
                   className="input"
                 />
               </div>

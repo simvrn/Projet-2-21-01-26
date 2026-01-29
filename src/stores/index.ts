@@ -1002,6 +1002,7 @@ export const useChroniclesStore = create<ChroniclesState>()(
           .from('chronicle_sections')
           .select('*')
           .order('order', { ascending: true });
+        console.log('fetchSections:', { data, error });
         if (!error && data) {
           const sections: ChronicleSection[] = data.map((row) => ({
             id: row.id,
@@ -1012,6 +1013,7 @@ export const useChroniclesStore = create<ChroniclesState>()(
           }));
           set({ sections, loading: false });
         } else {
+          console.error('fetchSections error:', error);
           set({ loading: false });
         }
       },
