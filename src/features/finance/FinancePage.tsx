@@ -78,6 +78,8 @@ export function FinancePage() {
   // Exchange rates modal
   const [isRatesModalOpen, setIsRatesModalOpen] = useState(false);
   const [rateInputs, setRateInputs] = useState<Record<string, string>>({});
+  const [newCurrencyCode, setNewCurrencyCode] = useState('');
+  const [customCurrencies, setCustomCurrencies] = useState<string[]>([]);
 
   const {
     stocks,
@@ -143,8 +145,11 @@ export function FinancePage() {
     // Ajouter les devises courantes si pas déjà présentes
     ['USD', 'GBP', 'CHF', 'JPY'].forEach(c => currencies.add(c));
 
+    // Ajouter les devises personnalisées
+    customCurrencies.forEach(c => currencies.add(c));
+
     return Array.from(currencies).sort();
-  }, [stocks, cryptos, cashAccounts]);
+  }, [stocks, cryptos, cashAccounts, customCurrencies]);
 
   // Ouvrir la modale des taux avec les valeurs actuelles
   const openRatesModal = () => {
@@ -154,7 +159,18 @@ export function FinancePage() {
       inputs[currency] = rate ? rate.toString() : '';
     });
     setRateInputs(inputs);
+    setNewCurrencyCode('');
     setIsRatesModalOpen(true);
+  };
+
+  // Ajouter une nouvelle devise
+  const handleAddCurrency = () => {
+    const code = newCurrencyCode.toUpperCase().trim();
+    if (code && code.length >= 2 && code.length <= 5 && !usedCurrencies.includes(code) && code !== 'EUR') {
+      setCustomCurrencies(prev => [...prev, code]);
+      setRateInputs(prev => ({ ...prev, [code]: '' }));
+      setNewCurrencyCode('');
+    }
   };
 
   // Sauvegarder tous les taux
@@ -1747,7 +1763,28 @@ export function FinancePage() {
             <span className="text-ivory-400">Exemple : si 1 USD = 0.92 EUR, entrez 0.92</span>
           </p>
 
-          <div className="space-y-3 max-h-[400px] overflow-y-auto">
+          {/* Ajouter une devise */}
+          <div className="flex items-center gap-2 p-3 bg-noir-800/50 rounded-lg border border-gold-400/20">
+            <Input
+              type="text"
+              value={newCurrencyCode}
+              onChange={(e) => setNewCurrencyCode(e.target.value.toUpperCase())}
+              placeholder="Ex: CAD, AUD..."
+              className="flex-1"
+              maxLength={5}
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleAddCurrency}
+              disabled={!newCurrencyCode.trim() || newCurrencyCode.length < 2}
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Ajouter devise
+            </Button>
+          </div>
+
+          <div className="space-y-3 max-h-[300px] overflow-y-auto">
             {usedCurrencies.map((currency) => (
               <div key={currency} className="flex items-center gap-3">
                 <div className="w-16 text-center">
