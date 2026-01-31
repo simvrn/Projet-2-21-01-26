@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -16,7 +16,7 @@ import {
   History,
   Bitcoin,
   Undo2,
-  AlertTriangle,
+  Settings,
 } from 'lucide-react';
 import { Button, Card, Modal, Input } from '@/components/ui';
 import { useFinanceStore, useExchangeRatesStore } from '@/stores';
@@ -75,6 +75,10 @@ export function FinancePage() {
   // Sold tab filter
   const [soldFilter, setSoldFilter] = useState<'all' | 'stocks' | 'crypto' | 'assets'>('all');
 
+  // Exchange rates modal
+  const [isRatesModalOpen, setIsRatesModalOpen] = useState(false);
+  const [rateInputs, setRateInputs] = useState<Record<string, string>>({});
+
   const {
     stocks,
     assets,
@@ -101,9 +105,10 @@ export function FinancePage() {
 
   const {
     lastUpdated: ratesLastUpdated,
-    warning: ratesWarning,
     fetchRates,
+    saveRate,
     convertToEUR,
+    getRate,
   } = useExchangeRatesStore();
 
   useEffect(() => {
@@ -113,6 +118,54 @@ export function FinancePage() {
     fetchCashAccounts();
     fetchRates(); // Fetch exchange rates on mount
   }, [fetchStocks, fetchAssets, fetchCryptos, fetchCashAccounts, fetchRates]);
+
+  // Détecter toutes les devises utilisées dans le portefeuille
+  const usedCurrencies = useMemo(() => {
+    const currencies = new Set<string>();
+
+    // Devises des stocks
+    stocks.forEach(s => {
+      if (s.purchaseCurrency && s.purchaseCurrency !== 'EUR') currencies.add(s.purchaseCurrency);
+      if (s.currentPriceCurrency && s.currentPriceCurrency !== 'EUR') currencies.add(s.currentPriceCurrency);
+    });
+
+    // Devises des cryptos
+    cryptos.forEach(c => {
+      if (c.purchaseCurrency && c.purchaseCurrency !== 'EUR') currencies.add(c.purchaseCurrency);
+      if (c.currentPriceCurrency && c.currentPriceCurrency !== 'EUR') currencies.add(c.currentPriceCurrency);
+    });
+
+    // Devises des comptes cash
+    cashAccounts.forEach(ca => {
+      if (ca.currency && ca.currency !== 'EUR') currencies.add(ca.currency);
+    });
+
+    // Ajouter les devises courantes si pas déjà présentes
+    ['USD', 'GBP', 'CHF', 'JPY'].forEach(c => currencies.add(c));
+
+    return Array.from(currencies).sort();
+  }, [stocks, cryptos, cashAccounts]);
+
+  // Ouvrir la modale des taux avec les valeurs actuelles
+  const openRatesModal = () => {
+    const inputs: Record<string, string> = {};
+    usedCurrencies.forEach(currency => {
+      const rate = getRate(currency);
+      inputs[currency] = rate ? rate.toString() : '';
+    });
+    setRateInputs(inputs);
+    setIsRatesModalOpen(true);
+  };
+
+  // Sauvegarder tous les taux
+  const handleSaveRates = async () => {
+    for (const [currency, value] of Object.entries(rateInputs)) {
+      if (value && !isNaN(parseFloat(value))) {
+        await saveRate(currency, parseFloat(value));
+      }
+    }
+    setIsRatesModalOpen(false);
+  };
 
   const resetForms = () => {
     setStockTicker('');
@@ -613,6 +666,10 @@ export function FinancePage() {
             );
           })}
         </div>
+        <Button variant="secondary" size="sm" onClick={openRatesModal}>
+          <Settings className="w-4 h-4 mr-2" />
+          💱 Taux de change
+        </Button>
       </div>
 
       {/* Stocks Tab */}
@@ -626,25 +683,16 @@ export function FinancePage() {
             </Button>
           </div>
 
-          {/* Exchange rates warning */}
-          {ratesWarning && (
-            <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 flex items-start gap-2 text-sm">
-              <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
-              <div className="text-orange-300">
-                <strong>Taux de change :</strong> {ratesWarning}
-              </div>
-            </div>
-          )}
-
           <div className="bg-noir-800/50 border border-gold-400/20 rounded-lg p-3 flex items-start gap-2 text-sm">
             <AlertCircle className="w-4 h-4 text-gold-400 flex-shrink-0 mt-0.5" />
             <div className="text-ivory-400">
-              <strong className="text-ivory-300">Prix en temps réel :</strong> Cliquez sur "Actualiser les prix" pour récupérer les cours via Yahoo Finance. Les valeurs sont converties en EUR.
+              <strong className="text-ivory-300">Prix en temps réel :</strong> Cliquez sur "Actualiser les prix" pour récupérer les cours via Yahoo Finance.
               {ratesLastUpdated && (
                 <span className="text-ivory-500 ml-1">
-                  (Taux mis à jour : {new Date(ratesLastUpdated).toLocaleDateString('fr-FR')})
+                  Taux manuels du {new Date(ratesLastUpdated).toLocaleDateString('fr-FR')}.
                 </span>
               )}
+              <span className="text-gold-400 ml-1">💱 Gérez vos taux de change en haut à droite.</span>
             </div>
           </div>
 
@@ -1681,6 +1729,57 @@ export function FinancePage() {
             </Button>
             <Button className="flex-1" onClick={handleSell}>
               Confirmer la vente
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Exchange Rates Modal */}
+      <Modal
+        isOpen={isRatesModalOpen}
+        onClose={() => setIsRatesModalOpen(false)}
+        title="💱 Taux de change vers EUR"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-ivory-500">
+            Saisissez le taux de conversion de chaque devise vers l'EUR.
+            <br />
+            <span className="text-ivory-400">Exemple : si 1 USD = 0.92 EUR, entrez 0.92</span>
+          </p>
+
+          <div className="space-y-3 max-h-[400px] overflow-y-auto">
+            {usedCurrencies.map((currency) => (
+              <div key={currency} className="flex items-center gap-3">
+                <div className="w-16 text-center">
+                  <span className="font-mono text-lg font-semibold text-gold-400">{currency}</span>
+                </div>
+                <span className="text-ivory-500">→</span>
+                <Input
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={rateInputs[currency] || ''}
+                  onChange={(e) => setRateInputs(prev => ({ ...prev, [currency]: e.target.value }))}
+                  placeholder="0.92"
+                  className="flex-1"
+                />
+                <span className="text-ivory-500">EUR</span>
+              </div>
+            ))}
+          </div>
+
+          {ratesLastUpdated && (
+            <p className="text-xs text-ivory-600">
+              Dernière mise à jour : {new Date(ratesLastUpdated).toLocaleDateString('fr-FR')}
+            </p>
+          )}
+
+          <div className="flex gap-3 pt-4 border-t border-noir-700">
+            <Button variant="secondary" className="flex-1" onClick={() => setIsRatesModalOpen(false)}>
+              Annuler
+            </Button>
+            <Button className="flex-1" onClick={handleSaveRates}>
+              Sauvegarder les taux
             </Button>
           </div>
         </div>

@@ -19,13 +19,13 @@ import type {
   ChronicleEntry,
 } from '@/types';
 
-// === EXCHANGE RATES STORE ===
+// === EXCHANGE RATES STORE (Manuel via Supabase) ===
 interface ExchangeRatesState {
   rates: Record<string, number>; // currency -> EUR rate (ex: USD -> 0.92)
   lastUpdated: string | null;
   loading: boolean;
-  warning: string | null;
   fetchRates: () => Promise<void>;
+  saveRate: (currency: string, rate: number) => Promise<void>;
   convertToEUR: (amount: number, fromCurrency: string) => number;
   getRate: (currency: string) => number | null;
 }
@@ -42,41 +42,79 @@ export const useExchangeRatesStore = create<ExchangeRatesState>()(
       },
       lastUpdated: null,
       loading: false,
-      warning: null,
 
+      // Charger les taux depuis Supabase
       fetchRates: async () => {
-        set({ loading: true, warning: null });
+        set({ loading: true });
         try {
-          const apiUrl = import.meta.env.DEV
-            ? 'http://localhost:3001/api/exchange-rates?from=EUR'
-            : '/api/exchange-rates?from=EUR';
+          const { data, error } = await supabase
+            .from('exchange_rates')
+            .select('*')
+            .eq('to_currency', 'EUR')
+            .order('date', { ascending: false });
 
-          console.log('Fetching exchange rates from:', apiUrl);
-          const response = await fetch(apiUrl);
-          const data = await response.json();
+          if (error) {
+            console.error('Error fetching exchange rates:', error);
+            set({ loading: false });
+            return;
+          }
 
-          if (data.success && data.rates) {
-            // Convertir les taux: API retourne EUR->X, on veut X->EUR
+          if (data && data.length > 0) {
+            // Prendre le taux le plus récent pour chaque devise
             const eurRates: Record<string, number> = { EUR: 1 };
-            for (const [currency, info] of Object.entries(data.rates)) {
-              if (currency !== 'EUR' && typeof info === 'object' && info !== null && 'rate' in info) {
-                // Si EUR->USD = 1.08, alors USD->EUR = 1/1.08 = 0.926
-                eurRates[currency] = 1 / (info as { rate: number }).rate;
+            const seenCurrencies = new Set<string>();
+
+            for (const row of data) {
+              if (!seenCurrencies.has(row.from_currency)) {
+                eurRates[row.from_currency] = Number(row.rate);
+                seenCurrencies.add(row.from_currency);
               }
             }
-            console.log('Exchange rates (to EUR):', eurRates);
+
+            console.log('Exchange rates loaded from Supabase:', eurRates);
             set({
               rates: eurRates,
-              lastUpdated: data.date || new Date().toISOString(),
+              lastUpdated: data[0]?.date || new Date().toISOString().split('T')[0],
               loading: false,
-              warning: data.warning || null,
             });
           } else {
-            set({ loading: false, warning: 'Failed to fetch rates' });
+            set({ loading: false });
           }
         } catch (error) {
           console.error('Error fetching exchange rates:', error);
-          set({ loading: false, warning: 'Network error - using cached rates' });
+          set({ loading: false });
+        }
+      },
+
+      // Sauvegarder un taux manuellement dans Supabase
+      saveRate: async (currency: string, rate: number) => {
+        const today = new Date().toISOString().split('T')[0];
+        const upperCurrency = currency.toUpperCase();
+
+        console.log(`Saving rate: ${upperCurrency} -> EUR = ${rate}`);
+
+        const { error } = await supabase
+          .from('exchange_rates')
+          .upsert({
+            from_currency: upperCurrency,
+            to_currency: 'EUR',
+            rate: rate,
+            date: today,
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'from_currency,to_currency,date',
+          });
+
+        if (error) {
+          console.error('Error saving exchange rate:', error);
+          alert(`Erreur sauvegarde taux: ${error.message}`);
+        } else {
+          // Mettre à jour le state local
+          set((state) => ({
+            rates: { ...state.rates, [upperCurrency]: rate },
+            lastUpdated: today,
+          }));
+          console.log(`Rate saved: ${upperCurrency} = ${rate}`);
         }
       },
 
