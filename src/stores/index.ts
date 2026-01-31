@@ -19,6 +19,92 @@ import type {
   ChronicleEntry,
 } from '@/types';
 
+// === EXCHANGE RATES STORE ===
+interface ExchangeRatesState {
+  rates: Record<string, number>; // currency -> EUR rate (ex: USD -> 0.92)
+  lastUpdated: string | null;
+  loading: boolean;
+  warning: string | null;
+  fetchRates: () => Promise<void>;
+  convertToEUR: (amount: number, fromCurrency: string) => number;
+  getRate: (currency: string) => number | null;
+}
+
+export const useExchangeRatesStore = create<ExchangeRatesState>()(
+  persist(
+    (set, get) => ({
+      rates: {
+        EUR: 1,
+        USD: 0.92,
+        GBP: 1.17,
+        CHF: 1.05,
+        JPY: 0.0062,
+      },
+      lastUpdated: null,
+      loading: false,
+      warning: null,
+
+      fetchRates: async () => {
+        set({ loading: true, warning: null });
+        try {
+          const apiUrl = import.meta.env.DEV
+            ? 'http://localhost:3001/api/exchange-rates?from=EUR'
+            : '/api/exchange-rates?from=EUR';
+
+          console.log('Fetching exchange rates from:', apiUrl);
+          const response = await fetch(apiUrl);
+          const data = await response.json();
+
+          if (data.success && data.rates) {
+            // Convertir les taux: API retourne EUR->X, on veut X->EUR
+            const eurRates: Record<string, number> = { EUR: 1 };
+            for (const [currency, info] of Object.entries(data.rates)) {
+              if (currency !== 'EUR' && typeof info === 'object' && info !== null && 'rate' in info) {
+                // Si EUR->USD = 1.08, alors USD->EUR = 1/1.08 = 0.926
+                eurRates[currency] = 1 / (info as { rate: number }).rate;
+              }
+            }
+            console.log('Exchange rates (to EUR):', eurRates);
+            set({
+              rates: eurRates,
+              lastUpdated: data.date || new Date().toISOString(),
+              loading: false,
+              warning: data.warning || null,
+            });
+          } else {
+            set({ loading: false, warning: 'Failed to fetch rates' });
+          }
+        } catch (error) {
+          console.error('Error fetching exchange rates:', error);
+          set({ loading: false, warning: 'Network error - using cached rates' });
+        }
+      },
+
+      convertToEUR: (amount: number, fromCurrency: string) => {
+        const rates = get().rates;
+        const currency = fromCurrency?.toUpperCase() || 'EUR';
+
+        if (currency === 'EUR') return amount;
+
+        const rate = rates[currency];
+        if (rate === undefined || rate === null) {
+          console.warn(`No exchange rate for ${currency}, returning original amount`);
+          return amount;
+        }
+
+        return Math.round(amount * rate);
+      },
+
+      getRate: (currency: string) => {
+        const rates = get().rates;
+        const cur = currency?.toUpperCase() || 'EUR';
+        return rates[cur] ?? null;
+      },
+    }),
+    { name: 'exchange-rates-storage' }
+  )
+);
+
 // === GOALS STORE (avec Supabase) ===
 interface GoalsState {
   goals: Goal[];
@@ -585,7 +671,7 @@ interface FinanceState {
 }
 
 // Fonction pour récupérer les prix des actions via notre API Vercel
-async function fetchStockPricesFromAPI(tickers: string[]): Promise<Record<string, { price: number; change: number; changePercent: number } | null>> {
+async function fetchStockPricesFromAPI(tickers: string[]): Promise<Record<string, { price: number; currency: string; change: number; changePercent: number } | null>> {
   try {
     const apiUrl = import.meta.env.DEV
       ? `http://localhost:3001/api/stock-price?symbols=${tickers.join(',')}`
@@ -608,12 +694,13 @@ async function fetchStockPricesFromAPI(tickers: string[]): Promise<Record<string
       return {};
     }
 
-    const results: Record<string, { price: number; change: number; changePercent: number } | null> = {};
+    const results: Record<string, { price: number; currency: string; change: number; changePercent: number } | null> = {};
     for (const [symbol, info] of Object.entries(data.data)) {
       if (info && typeof info === 'object' && 'price' in info) {
-        const stockInfo = info as { price: number; change: number; changePercent: number };
+        const stockInfo = info as { price: number; currency: string; change: number; changePercent: number };
         results[symbol] = {
           price: Math.round(stockInfo.price * 100), // Convertir en centimes
+          currency: stockInfo.currency || 'USD',
           change: stockInfo.change,
           changePercent: stockInfo.changePercent,
         };
@@ -652,11 +739,14 @@ export const useFinanceStore = create<FinanceState>()(
             name: row.name,
             quantity: row.quantity,
             purchasePrice: row.purchase_price,
+            purchaseCurrency: row.purchase_currency || 'EUR',
             purchaseDate: row.purchase_date,
             currentPrice: row.current_price,
+            currentPriceCurrency: row.current_price_currency,
             lastUpdated: row.last_updated,
             sold: row.sold || false,
             salePrice: row.sale_price,
+            saleCurrency: row.sale_currency,
             saleDate: row.sale_date,
             createdAt: row.created_at,
           }));
@@ -674,11 +764,14 @@ export const useFinanceStore = create<FinanceState>()(
           name: stock.name,
           quantity: stock.quantity,
           purchase_price: stock.purchasePrice,
+          purchase_currency: stock.purchaseCurrency || 'EUR',
           purchase_date: stock.purchaseDate,
           current_price: stock.currentPrice,
+          current_price_currency: stock.currentPriceCurrency,
           last_updated: stock.lastUpdated,
           sold: stock.sold || false,
           sale_price: stock.salePrice,
+          sale_currency: stock.saleCurrency,
           sale_date: stock.saleDate,
           created_at: stock.createdAt,
         });
@@ -696,11 +789,14 @@ export const useFinanceStore = create<FinanceState>()(
         if (updates.name !== undefined) dbUpdates.name = updates.name;
         if (updates.quantity !== undefined) dbUpdates.quantity = updates.quantity;
         if (updates.purchasePrice !== undefined) dbUpdates.purchase_price = updates.purchasePrice;
+        if (updates.purchaseCurrency !== undefined) dbUpdates.purchase_currency = updates.purchaseCurrency;
         if (updates.purchaseDate !== undefined) dbUpdates.purchase_date = updates.purchaseDate;
         if (updates.currentPrice !== undefined) dbUpdates.current_price = updates.currentPrice;
+        if (updates.currentPriceCurrency !== undefined) dbUpdates.current_price_currency = updates.currentPriceCurrency;
         if (updates.lastUpdated !== undefined) dbUpdates.last_updated = updates.lastUpdated;
         if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
         if (updates.salePrice !== undefined) dbUpdates.sale_price = updates.salePrice;
+        if (updates.saleCurrency !== undefined) dbUpdates.sale_currency = updates.saleCurrency;
         if (updates.saleDate !== undefined) dbUpdates.sale_date = updates.saleDate;
 
         const { error } = await supabase.from('stocks').update(dbUpdates).eq('id', id);
@@ -728,7 +824,7 @@ export const useFinanceStore = create<FinanceState>()(
       },
 
       fetchStockPrices: async () => {
-        const stocks = get().stocks;
+        const stocks = get().stocks.filter(s => !s.sold);
         if (stocks.length === 0) return;
 
         const tickers = stocks.map((s) => s.ticker);
@@ -737,7 +833,11 @@ export const useFinanceStore = create<FinanceState>()(
         for (const stock of stocks) {
           const priceInfo = prices[stock.ticker];
           if (priceInfo !== null && priceInfo !== undefined) {
-            await get().updateStockPrice(stock.id, priceInfo.price);
+            await get().updateStock(stock.id, {
+              currentPrice: priceInfo.price,
+              currentPriceCurrency: priceInfo.currency || 'USD',
+              lastUpdated: new Date().toISOString(),
+            });
           }
         }
       },
@@ -835,11 +935,14 @@ export const useFinanceStore = create<FinanceState>()(
             name: row.name,
             quantity: row.quantity,
             purchasePrice: row.purchase_price,
+            purchaseCurrency: row.purchase_currency || 'EUR',
             purchaseDate: row.purchase_date,
             currentPrice: row.current_price,
+            currentPriceCurrency: row.current_price_currency,
             lastUpdated: row.last_updated,
             sold: row.sold || false,
             salePrice: row.sale_price,
+            saleCurrency: row.sale_currency,
             saleDate: row.sale_date,
             createdAt: row.created_at,
           }));
@@ -857,11 +960,14 @@ export const useFinanceStore = create<FinanceState>()(
           name: crypto.name,
           quantity: crypto.quantity,
           purchase_price: crypto.purchasePrice,
+          purchase_currency: crypto.purchaseCurrency || 'EUR',
           purchase_date: crypto.purchaseDate,
           current_price: crypto.currentPrice,
+          current_price_currency: crypto.currentPriceCurrency,
           last_updated: crypto.lastUpdated,
           sold: crypto.sold || false,
           sale_price: crypto.salePrice,
+          sale_currency: crypto.saleCurrency,
           sale_date: crypto.saleDate,
           created_at: crypto.createdAt,
         });
@@ -879,11 +985,14 @@ export const useFinanceStore = create<FinanceState>()(
         if (updates.name !== undefined) dbUpdates.name = updates.name;
         if (updates.quantity !== undefined) dbUpdates.quantity = updates.quantity;
         if (updates.purchasePrice !== undefined) dbUpdates.purchase_price = updates.purchasePrice;
+        if (updates.purchaseCurrency !== undefined) dbUpdates.purchase_currency = updates.purchaseCurrency;
         if (updates.purchaseDate !== undefined) dbUpdates.purchase_date = updates.purchaseDate;
         if (updates.currentPrice !== undefined) dbUpdates.current_price = updates.currentPrice;
+        if (updates.currentPriceCurrency !== undefined) dbUpdates.current_price_currency = updates.currentPriceCurrency;
         if (updates.lastUpdated !== undefined) dbUpdates.last_updated = updates.lastUpdated;
         if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
         if (updates.salePrice !== undefined) dbUpdates.sale_price = updates.salePrice;
+        if (updates.saleCurrency !== undefined) dbUpdates.sale_currency = updates.saleCurrency;
         if (updates.saleDate !== undefined) dbUpdates.sale_date = updates.saleDate;
 
         const { error } = await supabase.from('cryptos').update(dbUpdates).eq('id', id);
@@ -1019,19 +1128,35 @@ export const useChroniclesStore = create<ChroniclesState>()(
       },
 
       addSection: async (section) => {
-        // Ajouter localement d'abord pour UX immediate
-        set((state) => ({ sections: [...state.sections, section] }));
-
-        // Puis sauvegarder dans Supabase
-        const { error } = await supabase.from('chronicle_sections').insert({
+        console.log('Adding section:', section);
+        const { data, error } = await supabase.from('chronicle_sections').insert({
           id: section.id,
           name: section.name,
           image: section.image,
           order: section.order,
           created_at: section.createdAt,
-        });
+        }).select();
+
         if (error) {
-          console.warn('Supabase error (section):', error.message);
+          console.error('Supabase error (section):', error);
+          alert(`Erreur sauvegarde section: ${error.message}\nCode: ${error.code}\nDetails: ${error.details || 'N/A'}`);
+        } else {
+          console.log('Section saved:', data);
+          // Refetch pour synchroniser avec la base
+          const { data: freshData } = await supabase
+            .from('chronicle_sections')
+            .select('*')
+            .order('order', { ascending: true });
+          if (freshData) {
+            const sections: ChronicleSection[] = freshData.map((row) => ({
+              id: row.id,
+              name: row.name,
+              image: row.image,
+              order: row.order,
+              createdAt: row.created_at,
+            }));
+            set({ sections });
+          }
         }
       },
 
@@ -1090,10 +1215,8 @@ export const useChroniclesStore = create<ChroniclesState>()(
       },
 
       addSubTheme: async (subTheme) => {
-        // Ajouter localement d'abord
-        set((state) => ({ subThemes: [...state.subThemes, subTheme] }));
-
-        const { error } = await supabase.from('chronicle_subthemes').insert({
+        console.log('Adding subTheme:', subTheme);
+        const { data, error } = await supabase.from('chronicle_subthemes').insert({
           id: subTheme.id,
           section_id: subTheme.sectionId,
           name: subTheme.name,
@@ -1101,9 +1224,30 @@ export const useChroniclesStore = create<ChroniclesState>()(
           description: subTheme.description,
           order: subTheme.order,
           created_at: subTheme.createdAt,
-        });
+        }).select();
+
         if (error) {
-          console.warn('Supabase error (subTheme):', error.message);
+          console.error('Supabase error (subTheme):', error);
+          alert(`Erreur sauvegarde sous-thème: ${error.message}\nCode: ${error.code}\nDetails: ${error.details || 'N/A'}`);
+        } else {
+          console.log('SubTheme saved:', data);
+          // Refetch pour synchroniser avec la base
+          const { data: freshData } = await supabase
+            .from('chronicle_subthemes')
+            .select('*')
+            .order('order', { ascending: true });
+          if (freshData) {
+            const subThemes: ChronicleSubTheme[] = freshData.map((row) => ({
+              id: row.id,
+              sectionId: row.section_id,
+              name: row.name,
+              image: row.image,
+              description: row.description,
+              order: row.order,
+              createdAt: row.created_at,
+            }));
+            set({ subThemes });
+          }
         }
       },
 
@@ -1162,10 +1306,8 @@ export const useChroniclesStore = create<ChroniclesState>()(
       },
 
       addEntry: async (entry) => {
-        // Ajouter localement d'abord pour UX immediate
-        set((state) => ({ entries: [...state.entries, entry] }));
-
-        const { error } = await supabase.from('chronicle_entries').insert({
+        console.log('Adding entry:', entry);
+        const { data, error } = await supabase.from('chronicle_entries').insert({
           id: entry.id,
           subtheme_id: entry.subThemeId,
           name: entry.name,
@@ -1175,9 +1317,32 @@ export const useChroniclesStore = create<ChroniclesState>()(
           annexe: entry.annexe,
           order: entry.order,
           created_at: entry.createdAt,
-        });
+        }).select();
+
         if (error) {
-          console.warn('Supabase error (entry):', error.message);
+          console.error('Supabase error (entry):', error);
+          alert(`Erreur sauvegarde entrée: ${error.message}\nCode: ${error.code}\nDetails: ${error.details || 'N/A'}`);
+        } else {
+          console.log('Entry saved:', data);
+          // Refetch pour synchroniser avec la base
+          const { data: freshData } = await supabase
+            .from('chronicle_entries')
+            .select('*')
+            .order('order', { ascending: true });
+          if (freshData) {
+            const entries: ChronicleEntry[] = freshData.map((row) => ({
+              id: row.id,
+              subThemeId: row.subtheme_id,
+              name: row.name,
+              image: row.image,
+              category: row.category,
+              description: row.description,
+              annexe: row.annexe,
+              order: row.order,
+              createdAt: row.created_at,
+            }));
+            set({ entries });
+          }
         }
       },
 

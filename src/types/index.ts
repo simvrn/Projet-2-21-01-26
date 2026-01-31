@@ -120,13 +120,16 @@ export interface Stock {
   ticker: string; // Ex: "AAPL", "MSFT"
   name: string;
   quantity: number;
-  purchasePrice: number; // Prix unitaire en centimes
+  purchasePrice: number; // Prix unitaire en centimes (devise d'origine)
+  purchaseCurrency?: string; // Devise d'achat (EUR par défaut)
   purchaseDate: string;
-  currentPrice?: number; // Prix actuel en centimes (API ou manuel)
+  currentPrice?: number; // Prix actuel en centimes (devise du marché)
+  currentPriceCurrency?: string; // Devise du prix actuel (souvent USD pour US stocks)
   lastUpdated?: string;
   // Vente
   sold?: boolean;
   salePrice?: number; // Prix de vente unitaire en centimes
+  saleCurrency?: string; // Devise de vente
   saleDate?: string;
   createdAt: string;
 }
@@ -159,15 +162,28 @@ export interface Crypto {
   symbol: string; // Ex: "BTC", "ETH"
   name: string;
   quantity: number;
-  purchasePrice: number; // Prix unitaire en centimes
+  purchasePrice: number; // Prix unitaire en centimes (devise d'origine)
+  purchaseCurrency?: string; // Devise d'achat (EUR par défaut)
   purchaseDate: string;
-  currentPrice?: number;
+  currentPrice?: number; // Prix actuel en centimes
+  currentPriceCurrency?: string; // Devise du prix actuel
   lastUpdated?: string;
   // Vente
   sold?: boolean;
   salePrice?: number;
+  saleCurrency?: string; // Devise de vente
   saleDate?: string;
   createdAt: string;
+}
+
+// === EXCHANGE RATES ===
+export interface ExchangeRate {
+  id: string;
+  fromCurrency: string;
+  toCurrency: string;
+  rate: number;
+  date: string; // "YYYY-MM-DD"
+  updatedAt: string;
 }
 
 // === NAVIGATION ===

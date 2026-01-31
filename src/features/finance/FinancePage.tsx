@@ -15,9 +15,11 @@ import {
   BadgeDollarSign,
   History,
   Bitcoin,
+  Undo2,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button, Card, Modal, Input } from '@/components/ui';
-import { useFinanceStore } from '@/stores';
+import { useFinanceStore, useExchangeRatesStore } from '@/stores';
 import type { Stock, Asset, CashAccount, Crypto } from '@/types';
 
 type TabType = 'stocks' | 'crypto' | 'assets' | 'cash' | 'sold';
@@ -27,7 +29,7 @@ export function FinancePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<TabType>('stocks');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [editingItem, setEditingItem] = useState<Stock | Asset | CashAccount | null>(null);
+  const [editingItem, setEditingItem] = useState<Stock | Asset | CashAccount | Crypto | null>(null);
 
   // Stock form
   const [stockTicker, setStockTicker] = useState('');
@@ -97,12 +99,20 @@ export function FinancePage() {
     removeCashAccount,
   } = useFinanceStore();
 
+  const {
+    lastUpdated: ratesLastUpdated,
+    warning: ratesWarning,
+    fetchRates,
+    convertToEUR,
+  } = useExchangeRatesStore();
+
   useEffect(() => {
     fetchStocks();
     fetchAssets();
     fetchCryptos();
     fetchCashAccounts();
-  }, [fetchStocks, fetchAssets, fetchCryptos, fetchCashAccounts]);
+    fetchRates(); // Fetch exchange rates on mount
+  }, [fetchStocks, fetchAssets, fetchCryptos, fetchCashAccounts, fetchRates]);
 
   const resetForms = () => {
     setStockTicker('');
@@ -258,7 +268,19 @@ export function FinancePage() {
   const handleRefreshPrices = async () => {
     setIsRefreshing(true);
     await fetchStockPrices();
+    await fetchRates(); // Also refresh exchange rates
     setIsRefreshing(false);
+  };
+
+  // Cancel sale - restore item to active portfolio
+  const handleCancelSale = async (item: Stock | Crypto | Asset, type: 'stock' | 'crypto' | 'asset') => {
+    if (type === 'stock') {
+      await updateStock(item.id, { sold: false });
+    } else if (type === 'crypto') {
+      await updateCrypto(item.id, { sold: false });
+    } else {
+      await updateAsset(item.id, { sold: false });
+    }
   };
 
   const handleSubmitStock = async () => {
@@ -371,45 +393,73 @@ export function FinancePage() {
   };
 
 
-  // Calculations
-  const calculateStockValue = (stock: Stock) => {
+  // Calculations - all converted to EUR
+  const calculateStockValueEUR = (stock: Stock) => {
     const price = stock.currentPrice || stock.purchasePrice;
-    return price * stock.quantity;
+    const currency = stock.currentPrice ? (stock.currentPriceCurrency || 'EUR') : (stock.purchaseCurrency || 'EUR');
+    const priceInEUR = convertToEUR(price, currency);
+    return priceInEUR * stock.quantity;
   };
 
-  const calculateStockGain = (stock: Stock) => {
+  const calculateStockPurchaseValueEUR = (stock: Stock) => {
+    const priceInEUR = convertToEUR(stock.purchasePrice, stock.purchaseCurrency || 'EUR');
+    return priceInEUR * stock.quantity;
+  };
+
+  const calculateStockGainEUR = (stock: Stock) => {
     if (!stock.currentPrice) return null;
-    const currentValue = stock.currentPrice * stock.quantity;
-    const purchaseValue = stock.purchasePrice * stock.quantity;
-    return currentValue - purchaseValue;
+    const currentValueEUR = calculateStockValueEUR(stock);
+    const purchaseValueEUR = calculateStockPurchaseValueEUR(stock);
+    return currentValueEUR - purchaseValueEUR;
   };
 
   const calculateStockGainPercent = (stock: Stock) => {
     if (!stock.currentPrice) return null;
-    return ((stock.currentPrice - stock.purchasePrice) / stock.purchasePrice) * 100;
+    const currentValueEUR = calculateStockValueEUR(stock);
+    const purchaseValueEUR = calculateStockPurchaseValueEUR(stock);
+    if (purchaseValueEUR === 0) return 0;
+    return ((currentValueEUR - purchaseValueEUR) / purchaseValueEUR) * 100;
   };
+
+  // For backward compatibility, keep original functions
+  const calculateStockValue = calculateStockValueEUR;
+  const calculateStockGain = calculateStockGainEUR;
 
   const calculateAssetGain = (asset: Asset) => asset.currentValue - asset.purchasePrice;
   const calculateAssetGainPercent = (asset: Asset) =>
     ((asset.currentValue - asset.purchasePrice) / asset.purchasePrice) * 100;
 
-  // Crypto calculations
-  const calculateCryptoValue = (crypto: Crypto) => {
+  // Crypto calculations - all converted to EUR
+  const calculateCryptoValueEUR = (crypto: Crypto) => {
     const price = crypto.currentPrice || crypto.purchasePrice;
-    return price * crypto.quantity;
+    const currency = crypto.currentPrice ? (crypto.currentPriceCurrency || 'EUR') : (crypto.purchaseCurrency || 'EUR');
+    const priceInEUR = convertToEUR(price, currency);
+    return priceInEUR * crypto.quantity;
   };
 
-  const calculateCryptoGain = (crypto: Crypto) => {
+  const calculateCryptoPurchaseValueEUR = (crypto: Crypto) => {
+    const priceInEUR = convertToEUR(crypto.purchasePrice, crypto.purchaseCurrency || 'EUR');
+    return priceInEUR * crypto.quantity;
+  };
+
+  const calculateCryptoGainEUR = (crypto: Crypto) => {
     if (!crypto.currentPrice) return null;
-    const currentValue = crypto.currentPrice * crypto.quantity;
-    const purchaseValue = crypto.purchasePrice * crypto.quantity;
-    return currentValue - purchaseValue;
+    const currentValueEUR = calculateCryptoValueEUR(crypto);
+    const purchaseValueEUR = calculateCryptoPurchaseValueEUR(crypto);
+    return currentValueEUR - purchaseValueEUR;
   };
 
   const calculateCryptoGainPercent = (crypto: Crypto) => {
     if (!crypto.currentPrice) return null;
-    return ((crypto.currentPrice - crypto.purchasePrice) / crypto.purchasePrice) * 100;
+    const currentValueEUR = calculateCryptoValueEUR(crypto);
+    const purchaseValueEUR = calculateCryptoPurchaseValueEUR(crypto);
+    if (purchaseValueEUR === 0) return 0;
+    return ((currentValueEUR - purchaseValueEUR) / purchaseValueEUR) * 100;
   };
+
+  // For backward compatibility
+  const calculateCryptoValue = calculateCryptoValueEUR;
+  const calculateCryptoGain = calculateCryptoGainEUR;
 
   // Separate active and sold items
   const activeStocks = stocks.filter(s => !s.sold);
@@ -429,23 +479,28 @@ export function FinancePage() {
   const totalCash = cashAccounts.reduce((sum, c) => sum + c.balance, 0);
   const totalNetWorth = totalStocksValue + totalCryptosValue + totalAssetsValue + totalCash;
 
-  // Calculate sold items profit
+  // Calculate sold items profit - all in EUR
   const soldStocksProfit = soldStocks.reduce((sum, s) => {
     if (s.salePrice) {
-      return sum + (s.salePrice - s.purchasePrice) * s.quantity;
+      const salePriceEUR = convertToEUR(s.salePrice, s.saleCurrency || 'EUR');
+      const purchasePriceEUR = convertToEUR(s.purchasePrice, s.purchaseCurrency || 'EUR');
+      return sum + (salePriceEUR - purchasePriceEUR) * s.quantity;
     }
     return sum;
   }, 0);
 
   const soldCryptosProfit = soldCryptos.reduce((sum, c) => {
     if (c.salePrice) {
-      return sum + (c.salePrice - c.purchasePrice) * c.quantity;
+      const salePriceEUR = convertToEUR(c.salePrice, c.saleCurrency || 'EUR');
+      const purchasePriceEUR = convertToEUR(c.purchasePrice, c.purchaseCurrency || 'EUR');
+      return sum + (salePriceEUR - purchasePriceEUR) * c.quantity;
     }
     return sum;
   }, 0);
 
   const soldAssetsProfit = soldAssets.reduce((sum, a) => {
     if (a.salePrice) {
+      // Assets are assumed to be in EUR
       return sum + (a.salePrice - a.purchasePrice);
     }
     return sum;
@@ -571,10 +626,25 @@ export function FinancePage() {
             </Button>
           </div>
 
+          {/* Exchange rates warning */}
+          {ratesWarning && (
+            <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 flex items-start gap-2 text-sm">
+              <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
+              <div className="text-orange-300">
+                <strong>Taux de change :</strong> {ratesWarning}
+              </div>
+            </div>
+          )}
+
           <div className="bg-noir-800/50 border border-gold-400/20 rounded-lg p-3 flex items-start gap-2 text-sm">
             <AlertCircle className="w-4 h-4 text-gold-400 flex-shrink-0 mt-0.5" />
             <div className="text-ivory-400">
-              <strong className="text-ivory-300">Prix en temps réel :</strong> Cliquez sur "Actualiser les prix" pour récupérer les cours via Yahoo Finance. Ouvrez la console (F12) pour voir les logs.
+              <strong className="text-ivory-300">Prix en temps réel :</strong> Cliquez sur "Actualiser les prix" pour récupérer les cours via Yahoo Finance. Les valeurs sont converties en EUR.
+              {ratesLastUpdated && (
+                <span className="text-ivory-500 ml-1">
+                  (Taux mis à jour : {new Date(ratesLastUpdated).toLocaleDateString('fr-FR')})
+                </span>
+              )}
             </div>
           </div>
 
@@ -594,6 +664,9 @@ export function FinancePage() {
                 const gainPercent = calculateStockGainPercent(stock);
                 const hasCurrentPrice = stock.currentPrice !== undefined;
                 const lastUpdated = stock.lastUpdated ? new Date(stock.lastUpdated) : null;
+                const currentCurrency = stock.currentPriceCurrency || 'EUR';
+                const purchaseCurrency = stock.purchaseCurrency || 'EUR';
+                const hasCurrencyConversion = currentCurrency !== 'EUR' || purchaseCurrency !== 'EUR';
 
                 return (
                   <Card key={stock.id} padding="sm" hover>
@@ -603,16 +676,23 @@ export function FinancePage() {
                           <span className="text-gold-400 font-bold text-sm">{stock.ticker}</span>
                         </div>
                         <div>
-                          <p className="font-medium text-ivory-100">{stock.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-ivory-100">{stock.name}</p>
+                            {hasCurrencyConversion && (
+                              <span className="text-xs bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">
+                                {currentCurrency}→EUR
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-3 text-sm">
                             <span className="text-ivory-500">
-                              {stock.quantity} × {(stock.purchasePrice / 100).toFixed(2)} €
+                              {stock.quantity} × {(stock.purchasePrice / 100).toFixed(2)} {purchaseCurrency}
                             </span>
                             {hasCurrentPrice && (
                               <>
                                 <span className="text-ivory-600">→</span>
                                 <span className="text-gold-400 font-medium">
-                                  {(stock.currentPrice! / 100).toFixed(2)} €
+                                  {(stock.currentPrice! / 100).toFixed(2)} {currentCurrency}
                                 </span>
                               </>
                             )}
@@ -1004,32 +1084,48 @@ export function FinancePage() {
                           <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Qté</th>
                           <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Prix achat</th>
                           <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Prix vente</th>
-                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Plus-value</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Plus-value (EUR)</th>
                           <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">%</th>
                           <th className="text-left py-3 px-4 text-ivory-500 text-xs uppercase">Date</th>
+                          <th className="text-center py-3 px-4 text-ivory-500 text-xs uppercase">Action</th>
                         </tr>
                       </thead>
                       <tbody>
                         {soldStocks.map((stock) => {
-                          const totalBuy = stock.purchasePrice * stock.quantity;
-                          const totalSell = (stock.salePrice || 0) * stock.quantity;
-                          const profit = totalSell - totalBuy;
-                          const profitPercent = ((stock.salePrice || 0) - stock.purchasePrice) / stock.purchasePrice * 100;
+                          const purchasePriceEUR = convertToEUR(stock.purchasePrice, stock.purchaseCurrency || 'EUR');
+                          const salePriceEUR = convertToEUR(stock.salePrice || 0, stock.saleCurrency || 'EUR');
+                          const totalBuyEUR = purchasePriceEUR * stock.quantity;
+                          const totalSellEUR = salePriceEUR * stock.quantity;
+                          const profitEUR = totalSellEUR - totalBuyEUR;
+                          const profitPercent = totalBuyEUR > 0 ? ((totalSellEUR - totalBuyEUR) / totalBuyEUR * 100) : 0;
 
                           return (
                             <tr key={stock.id} className="border-b border-noir-800/50 hover:bg-noir-800/30">
                               <td className="py-3 px-4 font-medium text-gold-400">{stock.ticker}</td>
                               <td className="py-3 px-4 text-ivory-300">{stock.name}</td>
                               <td className="py-3 px-4 text-right text-ivory-400">{stock.quantity}</td>
-                              <td className="py-3 px-4 text-right text-ivory-400">{(stock.purchasePrice / 100).toFixed(2)} €</td>
-                              <td className="py-3 px-4 text-right text-ivory-200">{((stock.salePrice || 0) / 100).toFixed(2)} €</td>
-                              <td className={`py-3 px-4 text-right font-medium ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                {profit >= 0 ? '+' : ''}{(profit / 100).toFixed(2)} €
+                              <td className="py-3 px-4 text-right text-ivory-400">
+                                {(stock.purchasePrice / 100).toFixed(2)} {stock.purchaseCurrency || '€'}
                               </td>
-                              <td className={`py-3 px-4 text-right ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              <td className="py-3 px-4 text-right text-ivory-200">
+                                {((stock.salePrice || 0) / 100).toFixed(2)} {stock.saleCurrency || '€'}
+                              </td>
+                              <td className={`py-3 px-4 text-right font-medium ${profitEUR >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {profitEUR >= 0 ? '+' : ''}{(profitEUR / 100).toFixed(2)} €
+                              </td>
+                              <td className={`py-3 px-4 text-right ${profitEUR >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                 {profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(1)}%
                               </td>
                               <td className="py-3 px-4 text-ivory-500">{stock.saleDate || '-'}</td>
+                              <td className="py-3 px-4 text-center">
+                                <button
+                                  onClick={() => handleCancelSale(stock, 'stock')}
+                                  className="text-ivory-500 hover:text-orange-400 transition-colors p-1"
+                                  title="Annuler la vente"
+                                >
+                                  <Undo2 className="w-4 h-4" />
+                                </button>
+                              </td>
                             </tr>
                           );
                         })}
@@ -1063,32 +1159,48 @@ export function FinancePage() {
                           <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Qté</th>
                           <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Prix achat</th>
                           <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Prix vente</th>
-                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Plus-value</th>
+                          <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Plus-value (EUR)</th>
                           <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">%</th>
                           <th className="text-left py-3 px-4 text-ivory-500 text-xs uppercase">Date</th>
+                          <th className="text-center py-3 px-4 text-ivory-500 text-xs uppercase">Action</th>
                         </tr>
                       </thead>
                       <tbody>
                         {soldCryptos.map((crypto) => {
-                          const totalBuy = crypto.purchasePrice * crypto.quantity;
-                          const totalSell = (crypto.salePrice || 0) * crypto.quantity;
-                          const profit = totalSell - totalBuy;
-                          const profitPercent = ((crypto.salePrice || 0) - crypto.purchasePrice) / crypto.purchasePrice * 100;
+                          const purchasePriceEUR = convertToEUR(crypto.purchasePrice, crypto.purchaseCurrency || 'EUR');
+                          const salePriceEUR = convertToEUR(crypto.salePrice || 0, crypto.saleCurrency || 'EUR');
+                          const totalBuyEUR = purchasePriceEUR * crypto.quantity;
+                          const totalSellEUR = salePriceEUR * crypto.quantity;
+                          const profitEUR = totalSellEUR - totalBuyEUR;
+                          const profitPercent = totalBuyEUR > 0 ? ((totalSellEUR - totalBuyEUR) / totalBuyEUR * 100) : 0;
 
                           return (
                             <tr key={crypto.id} className="border-b border-noir-800/50 hover:bg-noir-800/30">
                               <td className="py-3 px-4 font-medium text-orange-400">{crypto.symbol}</td>
                               <td className="py-3 px-4 text-ivory-300">{crypto.name}</td>
                               <td className="py-3 px-4 text-right text-ivory-400">{crypto.quantity}</td>
-                              <td className="py-3 px-4 text-right text-ivory-400">{(crypto.purchasePrice / 100).toFixed(2)} €</td>
-                              <td className="py-3 px-4 text-right text-ivory-200">{((crypto.salePrice || 0) / 100).toFixed(2)} €</td>
-                              <td className={`py-3 px-4 text-right font-medium ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                {profit >= 0 ? '+' : ''}{(profit / 100).toFixed(2)} €
+                              <td className="py-3 px-4 text-right text-ivory-400">
+                                {(crypto.purchasePrice / 100).toFixed(2)} {crypto.purchaseCurrency || '€'}
                               </td>
-                              <td className={`py-3 px-4 text-right ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              <td className="py-3 px-4 text-right text-ivory-200">
+                                {((crypto.salePrice || 0) / 100).toFixed(2)} {crypto.saleCurrency || '€'}
+                              </td>
+                              <td className={`py-3 px-4 text-right font-medium ${profitEUR >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {profitEUR >= 0 ? '+' : ''}{(profitEUR / 100).toFixed(2)} €
+                              </td>
+                              <td className={`py-3 px-4 text-right ${profitEUR >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                 {profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(1)}%
                               </td>
                               <td className="py-3 px-4 text-ivory-500">{crypto.saleDate || '-'}</td>
+                              <td className="py-3 px-4 text-center">
+                                <button
+                                  onClick={() => handleCancelSale(crypto, 'crypto')}
+                                  className="text-ivory-500 hover:text-orange-400 transition-colors p-1"
+                                  title="Annuler la vente"
+                                >
+                                  <Undo2 className="w-4 h-4" />
+                                </button>
+                              </td>
                             </tr>
                           );
                         })}
@@ -1124,12 +1236,13 @@ export function FinancePage() {
                           <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">Plus-value</th>
                           <th className="text-right py-3 px-4 text-ivory-500 text-xs uppercase">%</th>
                           <th className="text-left py-3 px-4 text-ivory-500 text-xs uppercase">Date</th>
+                          <th className="text-center py-3 px-4 text-ivory-500 text-xs uppercase">Action</th>
                         </tr>
                       </thead>
                       <tbody>
                         {soldAssets.map((asset) => {
                           const profit = (asset.salePrice || 0) - asset.purchasePrice;
-                          const profitPercent = ((asset.salePrice || 0) - asset.purchasePrice) / asset.purchasePrice * 100;
+                          const profitPercent = asset.purchasePrice > 0 ? ((asset.salePrice || 0) - asset.purchasePrice) / asset.purchasePrice * 100 : 0;
 
                           return (
                             <tr key={asset.id} className="border-b border-noir-800/50 hover:bg-noir-800/30">
@@ -1144,6 +1257,15 @@ export function FinancePage() {
                                 {profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(1)}%
                               </td>
                               <td className="py-3 px-4 text-ivory-500">{asset.saleDate || '-'}</td>
+                              <td className="py-3 px-4 text-center">
+                                <button
+                                  onClick={() => handleCancelSale(asset, 'asset')}
+                                  className="text-ivory-500 hover:text-orange-400 transition-colors p-1"
+                                  title="Annuler la vente"
+                                >
+                                  <Undo2 className="w-4 h-4" />
+                                </button>
+                              </td>
                             </tr>
                           );
                         })}
