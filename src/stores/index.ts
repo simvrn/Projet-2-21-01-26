@@ -531,47 +531,150 @@ export const useRoutinesStore = create<RoutinesState>()(
   )
 );
 
-// === CHALLENGES STORE ===
+// === CHALLENGES STORE (avec Supabase) ===
 interface ChallengesState {
   challenges: Challenge[];
-  addChallenge: (month: string, content: string) => void;
-  removeChallenge: (id: string) => void;
-  toggleChallengeComplete: (id: string) => void;
-  updateChallengeContent: (id: string, content: string) => void;
+  loading: boolean;
+  fetchChallenges: () => Promise<void>;
+  addChallenge: (month: string, content: string) => Promise<void>;
+  removeChallenge: (id: string) => Promise<void>;
+  toggleChallengeComplete: (id: string) => Promise<void>;
+  updateChallengeContent: (id: string, content: string) => Promise<void>;
 }
 
 export const useChallengesStore = create<ChallengesState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       challenges: [],
-      addChallenge: (month, content) =>
+      loading: false,
+
+      fetchChallenges: async () => {
+        set({ loading: true });
+        try {
+          const { data, error } = await supabase
+            .from('challenges')
+            .select('*')
+            .order('month', { ascending: false });
+          if (!error && data) {
+            const challenges: Challenge[] = data.map((row) => ({
+              id: row.id,
+              month: row.month,
+              content: row.content,
+              completed: row.completed,
+            }));
+            set({ challenges, loading: false });
+          } else {
+            console.error('Error fetching challenges:', error);
+            set({ loading: false });
+          }
+        } catch (err) {
+          console.error('Error fetching challenges:', err);
+          set({ loading: false });
+        }
+      },
+
+      addChallenge: async (month, content) => {
+        const newChallenge: Challenge = {
+          id: crypto.randomUUID(),
+          month,
+          content,
+          completed: false,
+        };
+
+        // Optimistic local update
         set((state) => ({
-          challenges: [
-            ...state.challenges,
-            {
-              id: crypto.randomUUID(),
-              month,
-              content,
-              completed: false,
-            },
-          ],
-        })),
-      removeChallenge: (id) =>
+          challenges: [...state.challenges, newChallenge],
+        }));
+
+        const { error } = await supabase.from('challenges').insert({
+          id: newChallenge.id,
+          month: newChallenge.month,
+          content: newChallenge.content,
+          completed: newChallenge.completed,
+        });
+
+        if (error) {
+          console.error('Error adding challenge:', error);
+          // Rollback on error
+          set((state) => ({
+            challenges: state.challenges.filter((c) => c.id !== newChallenge.id),
+          }));
+        }
+      },
+
+      removeChallenge: async (id) => {
+        const previous = get().challenges;
+
+        // Optimistic local update
         set((state) => ({
           challenges: state.challenges.filter((c) => c.id !== id),
-        })),
-      toggleChallengeComplete: (id) =>
+        }));
+
+        const { error } = await supabase.from('challenges').delete().eq('id', id);
+        if (error) {
+          console.error('Error removing challenge:', error);
+          // Rollback on error
+          set({ challenges: previous });
+        }
+      },
+
+      toggleChallengeComplete: async (id) => {
+        const challenge = get().challenges.find((c) => c.id === id);
+        if (!challenge) return;
+
+        const newCompleted = !challenge.completed;
+
+        // Optimistic local update
         set((state) => ({
           challenges: state.challenges.map((c) =>
-            c.id === id ? { ...c, completed: !c.completed } : c
+            c.id === id ? { ...c, completed: newCompleted } : c
           ),
-        })),
-      updateChallengeContent: (id, content) =>
+        }));
+
+        const { error } = await supabase
+          .from('challenges')
+          .update({ completed: newCompleted })
+          .eq('id', id);
+
+        if (error) {
+          console.error('Error toggling challenge:', error);
+          // Rollback on error
+          set((state) => ({
+            challenges: state.challenges.map((c) =>
+              c.id === id ? { ...c, completed: !newCompleted } : c
+            ),
+          }));
+        }
+      },
+
+      updateChallengeContent: async (id, content) => {
+        const challenge = get().challenges.find((c) => c.id === id);
+        if (!challenge) return;
+
+        const previousContent = challenge.content;
+
+        // Optimistic local update
         set((state) => ({
           challenges: state.challenges.map((c) =>
             c.id === id ? { ...c, content } : c
           ),
-        })),
+        }));
+
+        const { error } = await supabase
+          .from('challenges')
+          .update({ content })
+          .eq('id', id);
+
+        if (error) {
+          console.error('Error updating challenge:', error);
+          // Rollback on error
+          set((state) => ({
+            challenges: state.challenges.map((c) =>
+              c.id === id ? { ...c, content: previousContent } : c
+            ),
+          }));
+        }
+      },
     }),
     { name: 'challenges-storage' }
   )

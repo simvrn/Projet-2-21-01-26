@@ -254,22 +254,30 @@ export function CalendarPage() {
             const isCurrentMonth = view === 'month' ? isSameMonth(day, currentDate) : true;
             const isToday = isSameDay(day, new Date());
 
+            // En vue mois, ne pas afficher les jours hors du mois courant
+            if (view === 'month' && !isCurrentMonth) {
+              return (
+                <div
+                  key={idx}
+                  className="min-h-[100px] p-2 border-b border-r border-dark-700/50 bg-dark-900/50"
+                />
+              );
+            }
+
             return (
               <div
                 key={idx}
                 onClick={() => openAddModal(day)}
                 className={`min-h-[100px] ${view === 'week' ? 'min-h-[500px]' : ''} p-2 border-b border-r border-dark-700/50 cursor-pointer hover:bg-dark-700/30 transition-colors ${
-                  !isCurrentMonth ? 'bg-dark-800/30' : ''
-                } ${isToday ? 'ring-2 ring-inset ring-white' : ''}`}
+                  isToday ? 'bg-accent-500/10 ring-2 ring-inset ring-accent-500' : ''
+                }`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span
-                    className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full ${
+                    className={`text-sm font-bold w-8 h-8 flex items-center justify-center rounded-full ${
                       isToday
-                        ? 'bg-accent-500 text-white'
-                        : isCurrentMonth
-                        ? 'text-dark-200'
-                        : 'text-dark-500'
+                        ? 'bg-accent-500 text-white shadow-lg shadow-accent-500/50'
+                        : 'text-dark-200'
                     }`}
                   >
                     {format(day, 'd')}

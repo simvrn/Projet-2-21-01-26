@@ -225,25 +225,27 @@ export function ChroniquesPage() {
   const handleSaveSection = async () => {
     if (!formName.trim()) return;
 
-    try {
-      if (editingItem && 'order' in editingItem && !('sectionId' in editingItem)) {
-        await updateSection(editingItem.id, {
-          name: formName,
-          image: formImage || undefined,
-        });
-      } else {
-        const newSection: ChronicleSection = {
-          id: crypto.randomUUID(),
-          name: formName,
-          image: formImage || undefined,
-          order: sections.length,
-          createdAt: new Date().toISOString(),
-        };
-        await addSection(newSection);
-      }
-    } finally {
-      setShowSectionModal(false);
-      resetForm();
+    // Fermer le modal immédiatement pour une meilleure UX
+    const name = formName;
+    const image = formImage || undefined;
+    const isEditing = editingItem && 'order' in editingItem && !('sectionId' in editingItem);
+    const editId = isEditing ? editingItem.id : null;
+
+    setShowSectionModal(false);
+    resetForm();
+
+    // Exécuter l'opération en arrière-plan
+    if (isEditing && editId) {
+      updateSection(editId, { name, image });
+    } else {
+      const newSection: ChronicleSection = {
+        id: crypto.randomUUID(),
+        name,
+        image,
+        order: sections.length,
+        createdAt: new Date().toISOString(),
+      };
+      addSection(newSection);
     }
   };
 
@@ -263,29 +265,32 @@ export function ChroniquesPage() {
   const handleSaveSubTheme = async () => {
     if (!formName.trim() || !selectedSection) return;
 
-    try {
-      if (editingItem && 'sectionId' in editingItem && !('subThemeId' in editingItem)) {
-        await updateSubTheme(editingItem.id, {
-          name: formName,
-          image: formImage || undefined,
-          description: formDescription || undefined,
-        });
-      } else {
-        const sectionSubThemes = subThemes.filter(st => st.sectionId === selectedSection.id);
-        const newSubTheme: ChronicleSubTheme = {
-          id: crypto.randomUUID(),
-          sectionId: selectedSection.id,
-          name: formName,
-          image: formImage || undefined,
-          description: formDescription || undefined,
-          order: sectionSubThemes.length,
-          createdAt: new Date().toISOString(),
-        };
-        await addSubTheme(newSubTheme);
-      }
-    } finally {
-      setShowSubThemeModal(false);
-      resetForm();
+    // Fermer le modal immédiatement pour une meilleure UX
+    const name = formName;
+    const image = formImage || undefined;
+    const description = formDescription || undefined;
+    const sectionId = selectedSection.id;
+    const isEditing = editingItem && 'sectionId' in editingItem && !('subThemeId' in editingItem);
+    const editId = isEditing ? editingItem.id : null;
+
+    setShowSubThemeModal(false);
+    resetForm();
+
+    // Exécuter l'opération en arrière-plan
+    if (isEditing && editId) {
+      updateSubTheme(editId, { name, image, description });
+    } else {
+      const sectionSubThemes = subThemes.filter(st => st.sectionId === sectionId);
+      const newSubTheme: ChronicleSubTheme = {
+        id: crypto.randomUUID(),
+        sectionId,
+        name,
+        image,
+        description,
+        order: sectionSubThemes.length,
+        createdAt: new Date().toISOString(),
+      };
+      addSubTheme(newSubTheme);
     }
   };
 
@@ -307,33 +312,36 @@ export function ChroniquesPage() {
   const handleSaveEntry = async () => {
     if (!formName.trim() || !selectedSubTheme) return;
 
-    try {
-      if (editingItem && 'subThemeId' in editingItem) {
-        await updateEntry(editingItem.id, {
-          name: formName,
-          image: formImage || undefined,
-          category: formCategory || undefined,
-          description: formDescription || undefined,
-          annexe: formAnnexe || undefined,
-        });
-      } else {
-        const subThemeEntries = entries.filter(e => e.subThemeId === selectedSubTheme.id);
-        const newEntry: ChronicleEntry = {
-          id: crypto.randomUUID(),
-          subThemeId: selectedSubTheme.id,
-          name: formName,
-          image: formImage || undefined,
-          category: formCategory || undefined,
-          description: formDescription || undefined,
-          annexe: formAnnexe || undefined,
-          order: subThemeEntries.length,
-          createdAt: new Date().toISOString(),
-        };
-        await addEntry(newEntry);
-      }
-    } finally {
-      setShowEntryModal(false);
-      resetForm();
+    // Fermer le modal immédiatement pour une meilleure UX
+    const name = formName;
+    const image = formImage || undefined;
+    const category = formCategory || undefined;
+    const description = formDescription || undefined;
+    const annexe = formAnnexe || undefined;
+    const subThemeId = selectedSubTheme.id;
+    const isEditing = editingItem && 'subThemeId' in editingItem;
+    const editId = isEditing ? editingItem.id : null;
+
+    setShowEntryModal(false);
+    resetForm();
+
+    // Exécuter l'opération en arrière-plan
+    if (isEditing && editId) {
+      updateEntry(editId, { name, image, category, description, annexe });
+    } else {
+      const subThemeEntries = entries.filter(e => e.subThemeId === subThemeId);
+      const newEntry: ChronicleEntry = {
+        id: crypto.randomUUID(),
+        subThemeId,
+        name,
+        image,
+        category,
+        description,
+        annexe,
+        order: subThemeEntries.length,
+        createdAt: new Date().toISOString(),
+      };
+      addEntry(newEntry);
     }
   };
 

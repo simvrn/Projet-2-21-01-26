@@ -1,13 +1,30 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui';
 import { useChallengesStore } from '@/stores';
 import { format, startOfYear, eachMonthOfInterval, endOfYear } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Trophy, CheckCircle2, Circle, Plus, Trash2 } from 'lucide-react';
+import { Trophy, CheckCircle2, Circle, Plus, Trash2, RefreshCw } from 'lucide-react';
 
 export function ChallengesPage() {
-  const { challenges, addChallenge, removeChallenge, toggleChallengeComplete } = useChallengesStore();
+  const { challenges, loading, fetchChallenges, addChallenge, removeChallenge, toggleChallengeComplete } = useChallengesStore();
   const [newChallengeInputs, setNewChallengeInputs] = useState<Record<string, string>>({});
+
+  // Fetch challenges on mount and when page becomes visible
+  useEffect(() => {
+    fetchChallenges();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchChallenges();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [fetchChallenges]);
+
+  const handleRefresh = useCallback(() => {
+    fetchChallenges();
+  }, [fetchChallenges]);
 
   const currentYear = new Date().getFullYear();
   const months = eachMonthOfInterval({
@@ -48,17 +65,28 @@ export function ChallengesPage() {
           <h1 className="text-2xl font-serif text-ivory-100">Défis Mensuels</h1>
           <p className="text-ivory-500 mt-1">
             Fixe plusieurs objectifs pour chaque mois et coche-les quand ils sont accomplis
+            {loading && <span className="ml-2 text-gold-400">Synchronisation...</span>}
           </p>
         </div>
-        {totalCount > 0 && (
-          <div className="flex items-center gap-2 bg-noir-800/50 border border-gold-400/20 rounded-lg px-4 py-2">
-            <Trophy className="w-5 h-5 text-gold-400" />
-            <span className="text-ivory-300">
-              <span className="text-gold-400 font-semibold">{completedCount}</span>
-              <span className="text-ivory-500">/{totalCount} complétés</span>
-            </span>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className={`p-2 rounded-lg text-ivory-500 hover:text-ivory-200 hover:bg-noir-700 transition-all ${loading ? 'animate-spin' : ''}`}
+            title="Rafraîchir"
+          >
+            <RefreshCw className="w-5 h-5" />
+          </button>
+          {totalCount > 0 && (
+            <div className="flex items-center gap-2 bg-noir-800/50 border border-gold-400/20 rounded-lg px-4 py-2">
+              <Trophy className="w-5 h-5 text-gold-400" />
+              <span className="text-ivory-300">
+                <span className="text-gold-400 font-semibold">{completedCount}</span>
+                <span className="text-ivory-500">/{totalCount} complétés</span>
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Months Grid */}
