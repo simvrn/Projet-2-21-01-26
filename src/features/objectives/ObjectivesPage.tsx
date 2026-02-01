@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Plus, Trash2, Pause, Play, Check, ImagePlus, X, Edit2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Plus, Trash2, Pause, Play, Check, ImagePlus, X, Edit2, RefreshCw } from 'lucide-react';
 import { Button, Card, Modal, Input } from '@/components/ui';
 import { useGoalsStore } from '@/stores';
 import { format, differenceInDays, addDays, parseISO } from 'date-fns';
@@ -20,9 +20,23 @@ export function ObjectivesPage() {
   const [formImage, setFormImage] = useState<string | undefined>();
   const [inputMode, setInputMode] = useState<'endDate' | 'duration'>('duration');
 
-  const { goals, fetchGoals, addGoal, updateGoal, removeGoal } = useGoalsStore();
+  const { goals, loading, fetchGoals, addGoal, updateGoal, removeGoal } = useGoalsStore();
 
+  // Force refresh from server on mount and visibility change
   useEffect(() => {
+    fetchGoals();
+
+    // Refresh when page becomes visible (when switching back from another tab/app)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchGoals();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [fetchGoals]);
+
+  const handleRefresh = useCallback(() => {
     fetchGoals();
   }, [fetchGoals]);
 
@@ -254,12 +268,23 @@ export function ObjectivesPage() {
           <h1 className="text-2xl font-bold text-dark-100">Objectifs</h1>
           <p className="text-dark-400 mt-1">
             {activeGoals.length} objectif{activeGoals.length > 1 ? 's' : ''} en cours
+            {loading && <span className="ml-2 text-accent-400">Synchronisation...</span>}
           </p>
         </div>
-        <Button onClick={openAddModal}>
-          <Plus className="w-5 h-5 mr-2" />
-          Nouvel objectif
-        </Button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className={`p-2 rounded-lg text-dark-400 hover:text-dark-100 hover:bg-dark-700 transition-all ${loading ? 'animate-spin' : ''}`}
+            title="Rafraîchir"
+          >
+            <RefreshCw className="w-5 h-5" />
+          </button>
+          <Button onClick={openAddModal}>
+            <Plus className="w-5 h-5 mr-2" />
+            Nouvel objectif
+          </Button>
+        </div>
       </div>
 
       {/* Active Goals */}

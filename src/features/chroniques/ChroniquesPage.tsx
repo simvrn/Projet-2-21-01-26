@@ -16,7 +16,26 @@ import {
   ChevronDown,
   Grid3X3,
   List,
+  GripVertical,
 } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  rectSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { ChronicleSection, ChronicleSubTheme, ChronicleEntry } from '@/types';
 
 type ViewLevel = 'sections' | 'subthemes' | 'entries' | 'entry-detail' | 'filtered';
@@ -32,12 +51,15 @@ export function ChroniquesPage() {
     addSection,
     updateSection,
     removeSection,
+    reorderSections,
     addSubTheme,
     updateSubTheme,
     removeSubTheme,
+    reorderSubThemes,
     addEntry,
     updateEntry,
     removeEntry,
+    reorderEntries,
   } = useChroniclesStore();
 
   // Navigation state
@@ -75,6 +97,11 @@ export function ChroniquesPage() {
     fetchSubThemes();
     fetchEntries();
   }, [fetchSections, fetchSubThemes, fetchEntries]);
+
+  // === SECTIONS TRIEES PAR ORDRE ===
+  const sortedSections = useMemo(() => {
+    return [...sections].sort((a, b) => a.order - b.order);
+  }, [sections]);
 
   // === CATEGORIES DYNAMIQUES (extraites des entrees) ===
   const allCategories = useMemo(() => {
@@ -198,23 +225,26 @@ export function ChroniquesPage() {
   const handleSaveSection = async () => {
     if (!formName.trim()) return;
 
-    if (editingItem && 'order' in editingItem && !('sectionId' in editingItem)) {
-      await updateSection(editingItem.id, {
-        name: formName,
-        image: formImage || undefined,
-      });
-    } else {
-      const newSection: ChronicleSection = {
-        id: crypto.randomUUID(),
-        name: formName,
-        image: formImage || undefined,
-        order: sections.length,
-        createdAt: new Date().toISOString(),
-      };
-      await addSection(newSection);
+    try {
+      if (editingItem && 'order' in editingItem && !('sectionId' in editingItem)) {
+        await updateSection(editingItem.id, {
+          name: formName,
+          image: formImage || undefined,
+        });
+      } else {
+        const newSection: ChronicleSection = {
+          id: crypto.randomUUID(),
+          name: formName,
+          image: formImage || undefined,
+          order: sections.length,
+          createdAt: new Date().toISOString(),
+        };
+        await addSection(newSection);
+      }
+    } finally {
+      setShowSectionModal(false);
+      resetForm();
     }
-    setShowSectionModal(false);
-    resetForm();
   };
 
   // === SUB-THEME HANDLERS ===
@@ -233,27 +263,30 @@ export function ChroniquesPage() {
   const handleSaveSubTheme = async () => {
     if (!formName.trim() || !selectedSection) return;
 
-    if (editingItem && 'sectionId' in editingItem && !('subThemeId' in editingItem)) {
-      await updateSubTheme(editingItem.id, {
-        name: formName,
-        image: formImage || undefined,
-        description: formDescription || undefined,
-      });
-    } else {
-      const sectionSubThemes = subThemes.filter(st => st.sectionId === selectedSection.id);
-      const newSubTheme: ChronicleSubTheme = {
-        id: crypto.randomUUID(),
-        sectionId: selectedSection.id,
-        name: formName,
-        image: formImage || undefined,
-        description: formDescription || undefined,
-        order: sectionSubThemes.length,
-        createdAt: new Date().toISOString(),
-      };
-      await addSubTheme(newSubTheme);
+    try {
+      if (editingItem && 'sectionId' in editingItem && !('subThemeId' in editingItem)) {
+        await updateSubTheme(editingItem.id, {
+          name: formName,
+          image: formImage || undefined,
+          description: formDescription || undefined,
+        });
+      } else {
+        const sectionSubThemes = subThemes.filter(st => st.sectionId === selectedSection.id);
+        const newSubTheme: ChronicleSubTheme = {
+          id: crypto.randomUUID(),
+          sectionId: selectedSection.id,
+          name: formName,
+          image: formImage || undefined,
+          description: formDescription || undefined,
+          order: sectionSubThemes.length,
+          createdAt: new Date().toISOString(),
+        };
+        await addSubTheme(newSubTheme);
+      }
+    } finally {
+      setShowSubThemeModal(false);
+      resetForm();
     }
-    setShowSubThemeModal(false);
-    resetForm();
   };
 
   // === ENTRY HANDLERS ===
@@ -274,31 +307,34 @@ export function ChroniquesPage() {
   const handleSaveEntry = async () => {
     if (!formName.trim() || !selectedSubTheme) return;
 
-    if (editingItem && 'subThemeId' in editingItem) {
-      await updateEntry(editingItem.id, {
-        name: formName,
-        image: formImage || undefined,
-        category: formCategory || undefined,
-        description: formDescription || undefined,
-        annexe: formAnnexe || undefined,
-      });
-    } else {
-      const subThemeEntries = entries.filter(e => e.subThemeId === selectedSubTheme.id);
-      const newEntry: ChronicleEntry = {
-        id: crypto.randomUUID(),
-        subThemeId: selectedSubTheme.id,
-        name: formName,
-        image: formImage || undefined,
-        category: formCategory || undefined,
-        description: formDescription || undefined,
-        annexe: formAnnexe || undefined,
-        order: subThemeEntries.length,
-        createdAt: new Date().toISOString(),
-      };
-      await addEntry(newEntry);
+    try {
+      if (editingItem && 'subThemeId' in editingItem) {
+        await updateEntry(editingItem.id, {
+          name: formName,
+          image: formImage || undefined,
+          category: formCategory || undefined,
+          description: formDescription || undefined,
+          annexe: formAnnexe || undefined,
+        });
+      } else {
+        const subThemeEntries = entries.filter(e => e.subThemeId === selectedSubTheme.id);
+        const newEntry: ChronicleEntry = {
+          id: crypto.randomUUID(),
+          subThemeId: selectedSubTheme.id,
+          name: formName,
+          image: formImage || undefined,
+          category: formCategory || undefined,
+          description: formDescription || undefined,
+          annexe: formAnnexe || undefined,
+          order: subThemeEntries.length,
+          createdAt: new Date().toISOString(),
+        };
+        await addEntry(newEntry);
+      }
+    } finally {
+      setShowEntryModal(false);
+      resetForm();
     }
-    setShowEntryModal(false);
-    resetForm();
   };
 
   // === NAVIGATION ===
@@ -339,11 +375,421 @@ export function ChroniquesPage() {
 
   // Get items for current view
   const currentSubThemes = selectedSection
-    ? subThemes.filter(st => st.sectionId === selectedSection.id)
+    ? subThemes.filter(st => st.sectionId === selectedSection.id).sort((a, b) => a.order - b.order)
     : [];
   const currentEntries = selectedSubTheme
-    ? entries.filter(e => e.subThemeId === selectedSubTheme.id)
+    ? entries.filter(e => e.subThemeId === selectedSubTheme.id).sort((a, b) => a.order - b.order)
     : [];
+
+  // === DRAG & DROP ===
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEndSections = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = sortedSections.findIndex((s) => s.id === active.id);
+      const newIndex = sortedSections.findIndex((s) => s.id === over.id);
+      const newOrder = arrayMove(sortedSections, oldIndex, newIndex);
+      reorderSections(newOrder.map((s) => s.id));
+    }
+  }, [sortedSections, reorderSections]);
+
+  const handleDragEndSubThemes = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id && selectedSection) {
+      const oldIndex = currentSubThemes.findIndex((st) => st.id === active.id);
+      const newIndex = currentSubThemes.findIndex((st) => st.id === over.id);
+      const newOrder = arrayMove(currentSubThemes, oldIndex, newIndex);
+      reorderSubThemes(selectedSection.id, newOrder.map((st) => st.id));
+    }
+  }, [currentSubThemes, selectedSection, reorderSubThemes]);
+
+  const handleDragEndEntries = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id && selectedSubTheme) {
+      const oldIndex = currentEntries.findIndex((e) => e.id === active.id);
+      const newIndex = currentEntries.findIndex((e) => e.id === over.id);
+      const newOrder = arrayMove(currentEntries, oldIndex, newIndex);
+      reorderEntries(selectedSubTheme.id, newOrder.map((e) => e.id));
+    }
+  }, [currentEntries, selectedSubTheme, reorderEntries]);
+
+  // === SORTABLE COMPONENTS ===
+  const SortableSectionCard = ({ section, isGrid }: { section: ChronicleSection; isGrid: boolean }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: section.id });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    if (isGrid) {
+      return (
+        <div ref={setNodeRef} style={style}>
+          <Card
+            hover
+            className={`cursor-pointer group relative ${isDragging ? 'shadow-2xl' : ''}`}
+            onClick={() => navigateToSection(section)}
+          >
+            <div
+              {...attributes}
+              {...listeners}
+              className="absolute top-2 left-2 p-1.5 rounded-lg bg-surface-elevated/80 text-ivory-200/40 hover:text-ivory-200 cursor-grab active:cursor-grabbing z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GripVertical className="w-4 h-4" />
+            </div>
+            {section.image && (
+              <div className="w-full h-40 rounded-xl overflow-hidden mb-4 bg-surface-elevated">
+                <img src={section.image} alt={section.name} className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-ivory-200 group-hover: transition-all ">
+                  {section.name}
+                </h3>
+                <p className="text-sm text-ivory-200/40 ">
+                  {subThemes.filter(st => st.sectionId === section.id).length} sous-themes
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-ivory-200/40 group-hover:text-ivory-200 transition-colors" />
+            </div>
+            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={(e) => { e.stopPropagation(); openSectionModal(section); }}
+                className="p-2 rounded-lg bg-surface-elevated/80 text-ivory-200/60 hover:text-ivory-200"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); removeSection(section.id); }}
+                className="p-2 rounded-lg bg-surface-elevated/80 text-red-400/60 hover:text-red-400"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // List view
+    return (
+      <div ref={setNodeRef} style={style}>
+        <Card
+          hover
+          className={`cursor-pointer group ${isDragging ? 'shadow-2xl' : ''}`}
+          onClick={() => navigateToSection(section)}
+        >
+          <div className="flex items-center gap-4">
+            <div
+              {...attributes}
+              {...listeners}
+              className="p-1.5 text-ivory-200/40 hover:text-ivory-200 cursor-grab active:cursor-grabbing"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GripVertical className="w-4 h-4" />
+            </div>
+            {section.image && (
+              <div className="w-16 h-16 rounded-lg overflow-hidden bg-surface-elevated flex-shrink-0">
+                <img src={section.image} alt={section.name} className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg font-semibold text-ivory-200 group-hover: transition-all ">
+                {section.name}
+              </h3>
+              <p className="text-sm text-ivory-200/40 ">
+                {subThemes.filter(st => st.sectionId === section.id).length} sous-themes
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); openSectionModal(section); }}
+                className="p-2 rounded-lg text-ivory-200/40 hover:text-ivory-200 hover:bg-gold-400/10 transition-colors"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); removeSection(section.id); }}
+                className="p-2 rounded-lg text-red-400/40 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+              <ChevronRight className="w-5 h-5 text-ivory-200/40 group-hover:text-ivory-200 transition-colors" />
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
+  const SortableSubThemeCard = ({ subTheme, isGrid }: { subTheme: ChronicleSubTheme; isGrid: boolean }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: subTheme.id });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    if (isGrid) {
+      return (
+        <div ref={setNodeRef} style={style}>
+          <Card
+            hover
+            className={`cursor-pointer group relative ${isDragging ? 'shadow-2xl' : ''}`}
+            onClick={() => navigateToSubTheme(subTheme)}
+          >
+            <div
+              {...attributes}
+              {...listeners}
+              className="absolute top-2 left-2 p-1.5 rounded-lg bg-surface-elevated/80 text-ivory-200/40 hover:text-ivory-200 cursor-grab active:cursor-grabbing z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GripVertical className="w-4 h-4" />
+            </div>
+            {subTheme.image && (
+              <div className="w-full h-32 rounded-xl overflow-hidden mb-4 bg-surface-elevated">
+                <img src={subTheme.image} alt={subTheme.name} className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-ivory-200 group-hover: transition-all ">
+                  {subTheme.name}
+                </h3>
+                {subTheme.description && (
+                  <p className="text-sm text-ivory-200/50 mt-1 line-clamp-2">{subTheme.description}</p>
+                )}
+                <p className="text-xs text-ivory-200/40  mt-2">
+                  {entries.filter(e => e.subThemeId === subTheme.id).length} entrees
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-ivory-200/40 group-hover:text-ivory-200 transition-colors" />
+            </div>
+            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={(e) => { e.stopPropagation(); openSubThemeModal(subTheme); }}
+                className="p-2 rounded-lg bg-surface-elevated/80 text-ivory-200/60 hover:text-ivory-200"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); removeSubTheme(subTheme.id); }}
+                className="p-2 rounded-lg bg-surface-elevated/80 text-red-400/60 hover:text-red-400"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // List view
+    return (
+      <div ref={setNodeRef} style={style}>
+        <Card
+          hover
+          className={`cursor-pointer group ${isDragging ? 'shadow-2xl' : ''}`}
+          onClick={() => navigateToSubTheme(subTheme)}
+        >
+          <div className="flex items-center gap-4">
+            <div
+              {...attributes}
+              {...listeners}
+              className="p-1.5 text-ivory-200/40 hover:text-ivory-200 cursor-grab active:cursor-grabbing"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GripVertical className="w-4 h-4" />
+            </div>
+            {subTheme.image && (
+              <div className="w-14 h-14 rounded-lg overflow-hidden bg-surface-elevated flex-shrink-0">
+                <img src={subTheme.image} alt={subTheme.name} className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg font-semibold text-ivory-200 group-hover: transition-all ">
+                {subTheme.name}
+              </h3>
+              {subTheme.description && (
+                <p className="text-sm text-ivory-200/50 line-clamp-1">{subTheme.description}</p>
+              )}
+              <p className="text-xs text-ivory-200/40 ">
+                {entries.filter(e => e.subThemeId === subTheme.id).length} entrees
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); openSubThemeModal(subTheme); }}
+                className="p-2 rounded-lg text-ivory-200/40 hover:text-ivory-200 hover:bg-gold-400/10 transition-colors"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); removeSubTheme(subTheme.id); }}
+                className="p-2 rounded-lg text-red-400/40 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+              <ChevronRight className="w-5 h-5 text-ivory-200/40 group-hover:text-ivory-200 transition-colors" />
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
+  const SortableEntryCard = ({ entry, isGrid }: { entry: ChronicleEntry; isGrid: boolean }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: entry.id });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    if (isGrid) {
+      return (
+        <div ref={setNodeRef} style={style}>
+          <Card
+            hover
+            className={`cursor-pointer group relative ${isDragging ? 'shadow-2xl' : ''}`}
+            onClick={() => navigateToEntry(entry)}
+          >
+            <div
+              {...attributes}
+              {...listeners}
+              className="absolute top-2 left-2 p-1.5 rounded-lg bg-surface-elevated/80 text-ivory-200/40 hover:text-ivory-200 cursor-grab active:cursor-grabbing z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GripVertical className="w-4 h-4" />
+            </div>
+            {entry.image && (
+              <div className="w-full h-32 rounded-xl overflow-hidden mb-4 bg-surface-elevated">
+                <img src={entry.image} alt={entry.name} className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                {entry.category && (
+                  <span className="badge badge-accent text-xs">{entry.category}</span>
+                )}
+              </div>
+              <h3 className="text-lg font-semibold text-ivory-200 group-hover: transition-all ">
+                {entry.name}
+              </h3>
+              {entry.description && (
+                <p className="text-sm text-ivory-200/50 mt-1 line-clamp-2">{entry.description}</p>
+              )}
+            </div>
+            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={(e) => { e.stopPropagation(); openEntryModal(entry); }}
+                className="p-2 rounded-lg bg-surface-elevated/80 text-ivory-200/60 hover:text-ivory-200"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); removeEntry(entry.id); }}
+                className="p-2 rounded-lg bg-surface-elevated/80 text-red-400/60 hover:text-red-400"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // List view
+    return (
+      <div ref={setNodeRef} style={style}>
+        <Card
+          hover
+          className={`cursor-pointer group ${isDragging ? 'shadow-2xl' : ''}`}
+          onClick={() => navigateToEntry(entry)}
+        >
+          <div className="flex items-center gap-4">
+            <div
+              {...attributes}
+              {...listeners}
+              className="p-1.5 text-ivory-200/40 hover:text-ivory-200 cursor-grab active:cursor-grabbing"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GripVertical className="w-4 h-4" />
+            </div>
+            {entry.image && (
+              <div className="w-14 h-14 rounded-lg overflow-hidden bg-surface-elevated flex-shrink-0">
+                <img src={entry.image} alt={entry.name} className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                {entry.category && (
+                  <span className="badge badge-accent text-xs">{entry.category}</span>
+                )}
+              </div>
+              <h3 className="text-lg font-semibold text-ivory-200 group-hover: transition-all ">
+                {entry.name}
+              </h3>
+              {entry.description && (
+                <p className="text-sm text-ivory-200/50 line-clamp-1">{entry.description}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); openEntryModal(entry); }}
+                className="p-2 rounded-lg text-ivory-200/40 hover:text-ivory-200 hover:bg-gold-400/10 transition-colors"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); removeEntry(entry.id); }}
+                className="p-2 rounded-lg text-red-400/40 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+              <ChevronRight className="w-5 h-5 text-ivory-200/40 group-hover:text-ivory-200 transition-colors" />
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  };
 
   // Breadcrumb
   const renderBreadcrumb = () => {
@@ -590,351 +1036,143 @@ export function ChroniquesPage() {
 
       {/* Content - SECTIONS */}
       {viewLevel === 'sections' && (
-        <>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEndSections}
+        >
           {/* Vue Grille */}
           {viewMode === 'grid' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sections.map((section) => (
-                <Card
-                  key={section.id}
-                  hover
-                  className="cursor-pointer group relative"
-                  onClick={() => navigateToSection(section)}
+            <SortableContext items={sortedSections.map(s => s.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {sortedSections.map((section) => (
+                  <SortableSectionCard key={section.id} section={section} isGrid={true} />
+                ))}
+                {/* Add Section Button */}
+                <button
+                  onClick={() => openSectionModal()}
+                  className="card p-6 border-dashed border-2 border-gold-400/20 hover:border-gold-400/50 flex flex-col items-center justify-center gap-2 min-h-[200px] text-ivory-200/40 hover:text-ivory-200 transition-all"
                 >
-                  {section.image && (
-                    <div className="w-full h-40 rounded-xl overflow-hidden mb-4 bg-surface-elevated">
-                      <img src={section.image} alt={section.name} className="w-full h-full object-cover" />
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-lg font-semibold text-ivory-200 group-hover: transition-all ">
-                        {section.name}
-                      </h3>
-                      <p className="text-sm text-ivory-200/40 ">
-                        {subThemes.filter(st => st.sectionId === section.id).length} sous-themes
-                      </p>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-ivory-200/40 group-hover:text-ivory-200 transition-colors" />
-                  </div>
-                  {/* Actions */}
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openSectionModal(section); }}
-                      className="p-2 rounded-lg bg-surface-elevated/80 text-ivory-200/60 hover:text-ivory-200"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); removeSection(section.id); }}
-                      className="p-2 rounded-lg bg-surface-elevated/80 text-red-400/60 hover:text-red-400"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </Card>
-              ))}
-              {/* Add Section Button */}
-              <button
-                onClick={() => openSectionModal()}
-                className="card p-6 border-dashed border-2 border-gold-400/20 hover:border-gold-400/50 flex flex-col items-center justify-center gap-2 min-h-[200px] text-ivory-200/40 hover:text-ivory-200 transition-all"
-              >
-                <Plus className="w-10 h-10" />
-                <span className="">Ajouter une section</span>
-              </button>
-            </div>
+                  <Plus className="w-10 h-10" />
+                  <span className="">Ajouter une section</span>
+                </button>
+              </div>
+            </SortableContext>
           )}
 
           {/* Vue Liste */}
           {viewMode === 'list' && (
-            <div className="space-y-2">
-              {sections.map((section) => (
-                <Card
-                  key={section.id}
-                  hover
-                  className="cursor-pointer group"
-                  onClick={() => navigateToSection(section)}
+            <SortableContext items={sortedSections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {sortedSections.map((section) => (
+                  <SortableSectionCard key={section.id} section={section} isGrid={false} />
+                ))}
+                {/* Add Section Button */}
+                <button
+                  onClick={() => openSectionModal()}
+                  className="w-full card p-4 border-dashed border-2 border-gold-400/20 hover:border-gold-400/50 flex items-center justify-center gap-2 text-ivory-200/40 hover:text-ivory-200 transition-all"
                 >
-                  <div className="flex items-center gap-4">
-                    {section.image && (
-                      <div className="w-16 h-16 rounded-lg overflow-hidden bg-surface-elevated flex-shrink-0">
-                        <img src={section.image} alt={section.name} className="w-full h-full object-cover" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-semibold text-ivory-200 group-hover: transition-all ">
-                        {section.name}
-                      </h3>
-                      <p className="text-sm text-ivory-200/40 ">
-                        {subThemes.filter(st => st.sectionId === section.id).length} sous-themes
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openSectionModal(section); }}
-                        className="p-2 rounded-lg text-ivory-200/40 hover:text-ivory-200 hover:bg-gold-400/10 transition-colors"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removeSection(section.id); }}
-                        className="p-2 rounded-lg text-red-400/40 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                      <ChevronRight className="w-5 h-5 text-ivory-200/40 group-hover:text-ivory-200 transition-colors" />
-                    </div>
-                  </div>
-                </Card>
-              ))}
-              {/* Add Section Button */}
-              <button
-                onClick={() => openSectionModal()}
-                className="w-full card p-4 border-dashed border-2 border-gold-400/20 hover:border-gold-400/50 flex items-center justify-center gap-2 text-ivory-200/40 hover:text-ivory-200 transition-all"
-              >
-                <Plus className="w-5 h-5" />
-                <span className="">Ajouter une section</span>
-              </button>
-            </div>
+                  <Plus className="w-5 h-5" />
+                  <span className="">Ajouter une section</span>
+                </button>
+              </div>
+            </SortableContext>
           )}
-        </>
+        </DndContext>
       )}
 
       {/* Content - SUBTHEMES */}
       {viewLevel === 'subthemes' && (
-        <>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEndSubThemes}
+        >
           {/* Vue Grille */}
           {viewMode === 'grid' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {currentSubThemes.map((subTheme) => (
-                <Card
-                  key={subTheme.id}
-                  hover
-                  className="cursor-pointer group relative"
-                  onClick={() => navigateToSubTheme(subTheme)}
+            <SortableContext items={currentSubThemes.map(st => st.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {currentSubThemes.map((subTheme) => (
+                  <SortableSubThemeCard key={subTheme.id} subTheme={subTheme} isGrid={true} />
+                ))}
+                {/* Add SubTheme Button */}
+                <button
+                  onClick={() => openSubThemeModal()}
+                  className="card p-6 border-dashed border-2 border-gold-400/20 hover:border-gold-400/50 flex flex-col items-center justify-center gap-2 min-h-[150px] text-ivory-200/40 hover:text-ivory-200 transition-all"
                 >
-                  {subTheme.image && (
-                    <div className="w-full h-32 rounded-xl overflow-hidden mb-4 bg-surface-elevated">
-                      <img src={subTheme.image} alt={subTheme.name} className="w-full h-full object-cover" />
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-lg font-semibold text-ivory-200 group-hover: transition-all ">
-                        {subTheme.name}
-                      </h3>
-                      {subTheme.description && (
-                        <p className="text-sm text-ivory-200/50 mt-1 line-clamp-2">{subTheme.description}</p>
-                      )}
-                      <p className="text-xs text-ivory-200/40  mt-2">
-                        {entries.filter(e => e.subThemeId === subTheme.id).length} entrees
-                      </p>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-ivory-200/40 group-hover:text-ivory-200 transition-colors" />
-                  </div>
-                  {/* Actions */}
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openSubThemeModal(subTheme); }}
-                      className="p-2 rounded-lg bg-surface-elevated/80 text-ivory-200/60 hover:text-ivory-200"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); removeSubTheme(subTheme.id); }}
-                      className="p-2 rounded-lg bg-surface-elevated/80 text-red-400/60 hover:text-red-400"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </Card>
-              ))}
-              {/* Add SubTheme Button */}
-              <button
-                onClick={() => openSubThemeModal()}
-                className="card p-6 border-dashed border-2 border-gold-400/20 hover:border-gold-400/50 flex flex-col items-center justify-center gap-2 min-h-[150px] text-ivory-200/40 hover:text-ivory-200 transition-all"
-              >
-                <Plus className="w-8 h-8" />
-                <span className=" text-sm">Ajouter un sous-theme</span>
-              </button>
-            </div>
+                  <Plus className="w-8 h-8" />
+                  <span className=" text-sm">Ajouter un sous-theme</span>
+                </button>
+              </div>
+            </SortableContext>
           )}
 
           {/* Vue Liste */}
           {viewMode === 'list' && (
-            <div className="space-y-2">
-              {currentSubThemes.map((subTheme) => (
-                <Card
-                  key={subTheme.id}
-                  hover
-                  className="cursor-pointer group"
-                  onClick={() => navigateToSubTheme(subTheme)}
+            <SortableContext items={currentSubThemes.map(st => st.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {currentSubThemes.map((subTheme) => (
+                  <SortableSubThemeCard key={subTheme.id} subTheme={subTheme} isGrid={false} />
+                ))}
+                {/* Add SubTheme Button */}
+                <button
+                  onClick={() => openSubThemeModal()}
+                  className="w-full card p-4 border-dashed border-2 border-gold-400/20 hover:border-gold-400/50 flex items-center justify-center gap-2 text-ivory-200/40 hover:text-ivory-200 transition-all"
                 >
-                  <div className="flex items-center gap-4">
-                    {subTheme.image && (
-                      <div className="w-14 h-14 rounded-lg overflow-hidden bg-surface-elevated flex-shrink-0">
-                        <img src={subTheme.image} alt={subTheme.name} className="w-full h-full object-cover" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-semibold text-ivory-200 group-hover: transition-all ">
-                        {subTheme.name}
-                      </h3>
-                      {subTheme.description && (
-                        <p className="text-sm text-ivory-200/50 line-clamp-1">{subTheme.description}</p>
-                      )}
-                      <p className="text-xs text-ivory-200/40 ">
-                        {entries.filter(e => e.subThemeId === subTheme.id).length} entrees
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openSubThemeModal(subTheme); }}
-                        className="p-2 rounded-lg text-ivory-200/40 hover:text-ivory-200 hover:bg-gold-400/10 transition-colors"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removeSubTheme(subTheme.id); }}
-                        className="p-2 rounded-lg text-red-400/40 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                      <ChevronRight className="w-5 h-5 text-ivory-200/40 group-hover:text-ivory-200 transition-colors" />
-                    </div>
-                  </div>
-                </Card>
-              ))}
-              {/* Add SubTheme Button */}
-              <button
-                onClick={() => openSubThemeModal()}
-                className="w-full card p-4 border-dashed border-2 border-gold-400/20 hover:border-gold-400/50 flex items-center justify-center gap-2 text-ivory-200/40 hover:text-ivory-200 transition-all"
-              >
-                <Plus className="w-5 h-5" />
-                <span className=" text-sm">Ajouter un sous-theme</span>
-              </button>
-            </div>
+                  <Plus className="w-5 h-5" />
+                  <span className=" text-sm">Ajouter un sous-theme</span>
+                </button>
+              </div>
+            </SortableContext>
           )}
-        </>
+        </DndContext>
       )}
 
       {/* Content - ENTRIES */}
       {viewLevel === 'entries' && (
-        <>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEndEntries}
+        >
           {/* Vue Grille */}
           {viewMode === 'grid' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {currentEntries.map((entry) => (
-                <Card
-                  key={entry.id}
-                  hover
-                  className="cursor-pointer group relative"
-                  onClick={() => navigateToEntry(entry)}
+            <SortableContext items={currentEntries.map(e => e.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {currentEntries.map((entry) => (
+                  <SortableEntryCard key={entry.id} entry={entry} isGrid={true} />
+                ))}
+                {/* Add Entry Button */}
+                <button
+                  onClick={() => openEntryModal()}
+                  className="card p-6 border-dashed border-2 border-gold-400/20 hover:border-gold-400/50 flex flex-col items-center justify-center gap-2 min-h-[150px] text-ivory-200/40 hover:text-ivory-200 transition-all"
                 >
-                  {entry.image && (
-                    <div className="w-full h-32 rounded-xl overflow-hidden mb-4 bg-surface-elevated">
-                      <img src={entry.image} alt={entry.name} className="w-full h-full object-cover" />
-                    </div>
-                  )}
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      {entry.category && (
-                        <span className="badge badge-accent text-xs">{entry.category}</span>
-                      )}
-                    </div>
-                    <h3 className="text-lg font-semibold text-ivory-200 group-hover: transition-all ">
-                      {entry.name}
-                    </h3>
-                    {entry.description && (
-                      <p className="text-sm text-ivory-200/50 mt-1 line-clamp-2">{entry.description}</p>
-                    )}
-                  </div>
-                  {/* Actions */}
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openEntryModal(entry); }}
-                      className="p-2 rounded-lg bg-surface-elevated/80 text-ivory-200/60 hover:text-ivory-200"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); removeEntry(entry.id); }}
-                      className="p-2 rounded-lg bg-surface-elevated/80 text-red-400/60 hover:text-red-400"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </Card>
-              ))}
-              {/* Add Entry Button */}
-              <button
-                onClick={() => openEntryModal()}
-                className="card p-6 border-dashed border-2 border-gold-400/20 hover:border-gold-400/50 flex flex-col items-center justify-center gap-2 min-h-[150px] text-ivory-200/40 hover:text-ivory-200 transition-all"
-              >
-                <Plus className="w-8 h-8" />
-                <span className=" text-sm">Ajouter une entree</span>
-              </button>
-            </div>
+                  <Plus className="w-8 h-8" />
+                  <span className=" text-sm">Ajouter une entree</span>
+                </button>
+              </div>
+            </SortableContext>
           )}
 
           {/* Vue Liste */}
           {viewMode === 'list' && (
-            <div className="space-y-2">
-              {currentEntries.map((entry) => (
-                <Card
-                  key={entry.id}
-                  hover
-                  className="cursor-pointer group"
-                  onClick={() => navigateToEntry(entry)}
+            <SortableContext items={currentEntries.map(e => e.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {currentEntries.map((entry) => (
+                  <SortableEntryCard key={entry.id} entry={entry} isGrid={false} />
+                ))}
+                {/* Add Entry Button */}
+                <button
+                  onClick={() => openEntryModal()}
+                  className="w-full card p-4 border-dashed border-2 border-gold-400/20 hover:border-gold-400/50 flex items-center justify-center gap-2 text-ivory-200/40 hover:text-ivory-200 transition-all"
                 >
-                  <div className="flex items-center gap-4">
-                    {entry.image && (
-                      <div className="w-14 h-14 rounded-lg overflow-hidden bg-surface-elevated flex-shrink-0">
-                        <img src={entry.image} alt={entry.name} className="w-full h-full object-cover" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        {entry.category && (
-                          <span className="badge badge-accent text-xs">{entry.category}</span>
-                        )}
-                      </div>
-                      <h3 className="text-lg font-semibold text-ivory-200 group-hover: transition-all ">
-                        {entry.name}
-                      </h3>
-                      {entry.description && (
-                        <p className="text-sm text-ivory-200/50 line-clamp-1">{entry.description}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openEntryModal(entry); }}
-                        className="p-2 rounded-lg text-ivory-200/40 hover:text-ivory-200 hover:bg-gold-400/10 transition-colors"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removeEntry(entry.id); }}
-                        className="p-2 rounded-lg text-red-400/40 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                      <ChevronRight className="w-5 h-5 text-ivory-200/40 group-hover:text-ivory-200 transition-colors" />
-                    </div>
-                  </div>
-                </Card>
-              ))}
-              {/* Add Entry Button */}
-              <button
-                onClick={() => openEntryModal()}
-                className="w-full card p-4 border-dashed border-2 border-gold-400/20 hover:border-gold-400/50 flex items-center justify-center gap-2 text-ivory-200/40 hover:text-ivory-200 transition-all"
-              >
-                <Plus className="w-5 h-5" />
-                <span className=" text-sm">Ajouter une entree</span>
-              </button>
-            </div>
+                  <Plus className="w-5 h-5" />
+                  <span className=" text-sm">Ajouter une entree</span>
+                </button>
+              </div>
+            </SortableContext>
           )}
-        </>
+        </DndContext>
       )}
 
       {viewLevel === 'entry-detail' && selectedEntry && (

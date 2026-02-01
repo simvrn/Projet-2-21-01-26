@@ -161,25 +161,32 @@ export const useGoalsStore = create<GoalsState>()(
 
       fetchGoals: async () => {
         set({ loading: true });
-        const { data, error } = await supabase
-          .from('goals')
-          .select('*')
-          .order('start_date', { ascending: false });
-        if (!error && data) {
-          const goals: Goal[] = data.map((row) => ({
-            id: row.id,
-            name: row.name,
-            description: row.description,
-            image: row.image,
-            color: row.color,
-            startDate: row.start_date,
-            endDate: row.end_date,
-            durationDays: row.duration_days,
-            status: row.status,
-            createdAt: row.created_at,
-          }));
-          set({ goals, loading: false });
-        } else {
+        try {
+          const { data, error } = await supabase
+            .from('goals')
+            .select('*')
+            .order('start_date', { ascending: false });
+          if (!error && data) {
+            const goals: Goal[] = data.map((row) => ({
+              id: row.id,
+              name: row.name,
+              description: row.description,
+              image: row.image,
+              color: row.color,
+              startDate: row.start_date,
+              endDate: row.end_date,
+              durationDays: row.duration_days,
+              status: row.status,
+              createdAt: row.created_at,
+            }));
+            // Force override local data with server data
+            set({ goals, loading: false });
+          } else {
+            console.error('Error fetching goals:', error);
+            set({ loading: false });
+          }
+        } catch (err) {
+          console.error('Error fetching goals:', err);
           set({ loading: false });
         }
       },
@@ -1122,16 +1129,19 @@ interface ChroniclesState {
   addSection: (section: ChronicleSection) => Promise<void>;
   updateSection: (id: string, updates: Partial<ChronicleSection>) => Promise<void>;
   removeSection: (id: string) => Promise<void>;
+  reorderSections: (orderedIds: string[]) => Promise<void>;
   // SubThemes
   fetchSubThemes: () => Promise<void>;
   addSubTheme: (subTheme: ChronicleSubTheme) => Promise<void>;
   updateSubTheme: (id: string, updates: Partial<ChronicleSubTheme>) => Promise<void>;
   removeSubTheme: (id: string) => Promise<void>;
+  reorderSubThemes: (sectionId: string, orderedIds: string[]) => Promise<void>;
   // Entries
   fetchEntries: () => Promise<void>;
   addEntry: (entry: ChronicleEntry) => Promise<void>;
   updateEntry: (id: string, updates: Partial<ChronicleEntry>) => Promise<void>;
   removeEntry: (id: string) => Promise<void>;
+  reorderEntries: (subThemeId: string, orderedIds: string[]) => Promise<void>;
 }
 
 export const useChroniclesStore = create<ChroniclesState>()(
@@ -1232,6 +1242,30 @@ export const useChroniclesStore = create<ChroniclesState>()(
         }
       },
 
+      reorderSections: async (orderedIds: string[]) => {
+        // Mettre à jour localement d'abord
+        set((state) => {
+          const reordered = orderedIds
+            .map((id, index) => {
+              const section = state.sections.find((s) => s.id === id);
+              return section ? { ...section, order: index } : null;
+            })
+            .filter((s): s is ChronicleSection => s !== null);
+          return { sections: reordered };
+        });
+
+        // Persister en base
+        for (let i = 0; i < orderedIds.length; i++) {
+          const { error } = await supabase
+            .from('chronicle_sections')
+            .update({ order: i })
+            .eq('id', orderedIds[i]);
+          if (error) {
+            console.warn('Supabase error (reorderSections):', error.message);
+          }
+        }
+      },
+
       // === SUB-THEMES ===
       fetchSubThemes: async () => {
         const { data, error } = await supabase
@@ -1318,6 +1352,31 @@ export const useChroniclesStore = create<ChroniclesState>()(
         const { error } = await supabase.from('chronicle_subthemes').delete().eq('id', id);
         if (error) {
           console.warn('Supabase error (removeSubTheme):', error.message);
+        }
+      },
+
+      reorderSubThemes: async (sectionId: string, orderedIds: string[]) => {
+        // Mettre à jour localement d'abord
+        set((state) => {
+          const otherSubThemes = state.subThemes.filter((st) => st.sectionId !== sectionId);
+          const reordered = orderedIds
+            .map((id, index) => {
+              const subTheme = state.subThemes.find((st) => st.id === id);
+              return subTheme ? { ...subTheme, order: index } : null;
+            })
+            .filter((st): st is ChronicleSubTheme => st !== null);
+          return { subThemes: [...otherSubThemes, ...reordered] };
+        });
+
+        // Persister en base
+        for (let i = 0; i < orderedIds.length; i++) {
+          const { error } = await supabase
+            .from('chronicle_subthemes')
+            .update({ order: i })
+            .eq('id', orderedIds[i]);
+          if (error) {
+            console.warn('Supabase error (reorderSubThemes):', error.message);
+          }
         }
       },
 
@@ -1412,6 +1471,31 @@ export const useChroniclesStore = create<ChroniclesState>()(
         const { error } = await supabase.from('chronicle_entries').delete().eq('id', id);
         if (error) {
           console.warn('Supabase error (removeEntry):', error.message);
+        }
+      },
+
+      reorderEntries: async (subThemeId: string, orderedIds: string[]) => {
+        // Mettre à jour localement d'abord
+        set((state) => {
+          const otherEntries = state.entries.filter((e) => e.subThemeId !== subThemeId);
+          const reordered = orderedIds
+            .map((id, index) => {
+              const entry = state.entries.find((e) => e.id === id);
+              return entry ? { ...entry, order: index } : null;
+            })
+            .filter((e): e is ChronicleEntry => e !== null);
+          return { entries: [...otherEntries, ...reordered] };
+        });
+
+        // Persister en base
+        for (let i = 0; i < orderedIds.length; i++) {
+          const { error } = await supabase
+            .from('chronicle_entries')
+            .update({ order: i })
+            .eq('id', orderedIds[i]);
+          if (error) {
+            console.warn('Supabase error (reorderEntries):', error.message);
+          }
         }
       },
     }),
