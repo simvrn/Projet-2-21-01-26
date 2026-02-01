@@ -45,9 +45,9 @@ export function ChroniquesPage() {
     sections,
     subThemes,
     entries,
-    fetchSections,
-    fetchSubThemes,
-    fetchEntries,
+    loading,
+    initialized,
+    fetchAll,
     addSection,
     updateSection,
     removeSection,
@@ -93,10 +93,10 @@ export function ChroniquesPage() {
   const sectionDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchSections();
-    fetchSubThemes();
-    fetchEntries();
-  }, [fetchSections, fetchSubThemes, fetchEntries]);
+    // Charger toutes les données en une seule fois (parallèle)
+    // Ne se déclenche qu'une fois grâce au flag 'initialized' dans le store
+    fetchAll();
+  }, [fetchAll]);
 
   // === SECTIONS TRIEES PAR ORDRE ===
   const sortedSections = useMemo(() => {
@@ -835,6 +835,18 @@ export function ChroniquesPage() {
       </div>
     );
   };
+
+  // Afficher un loader pendant le chargement initial
+  if (loading && !initialized) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-2 border-gold-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-ivory-200/60">Chargement des chroniques...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
