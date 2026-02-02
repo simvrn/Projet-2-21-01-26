@@ -1261,66 +1261,56 @@ export const useChroniclesStore = create<ChroniclesState>()(
 
     // === CHARGEMENT INITIAL EN PARALLELE ===
     fetchAll: async () => {
-      // Ne charger qu'une seule fois
-      if (get().initialized) return;
-
-      set({ loading: true });
-      console.log('[Chronicles] Début du chargement...');
+      // FORCE: Reset complet et rechargement à chaque appel (debug)
+      set({ sections: [], subThemes: [], entries: [], loading: true, initialized: false });
+      console.log('[Chronicles] === FORCE FETCH SUPABASE ===');
 
       try {
-        // Charger les 3 en parallèle pour éliminer la latence
+        // Charger les 3 en parallèle avec colonnes explicites (sans tri - "order" est mot réservé SQL)
         const [sectionsRes, subThemesRes, entriesRes] = await Promise.all([
-          supabase.from('chronicle_sections').select('*').order('order', { ascending: true }),
-          supabase.from('chronicle_subthemes').select('*').order('order', { ascending: true }),
-          supabase.from('chronicle_entries').select('*').order('order', { ascending: true }),
+          supabase.from('chronicle_sections').select('id, name, image, order, created_at'),
+          supabase.from('chronicle_subthemes').select('id, section_id, name, image, description, order, created_at'),
+          supabase.from('chronicle_entries').select('id, subtheme_id, name, image, category, description, annexe, order, created_at'),
         ]);
 
-        // Log des résultats pour debug
-        console.log('[Chronicles] Sections response:', { data: sectionsRes.data?.length, error: sectionsRes.error });
-        console.log('[Chronicles] SubThemes response:', { data: subThemesRes.data?.length, error: subThemesRes.error });
-        console.log('[Chronicles] Entries response:', { data: entriesRes.data?.length, error: entriesRes.error });
-
-        // Log des données brutes pour debug
-        if (sectionsRes.data && sectionsRes.data.length > 0) {
-          console.log('[Chronicles] Premier section (raw):', sectionsRes.data[0]);
-        }
-        if (subThemesRes.data && subThemesRes.data.length > 0) {
-          console.log('[Chronicles] Premier subTheme (raw):', subThemesRes.data[0]);
-        }
-        if (entriesRes.data && entriesRes.data.length > 0) {
-          console.log('[Chronicles] Premier entry (raw):', entriesRes.data[0]);
-        }
+        // Log COMPLET des résultats
+        console.log('[Chronicles] === RESULTATS SUPABASE ===');
+        console.log('[Chronicles] Sections:', sectionsRes);
+        console.log('[Chronicles] SubThemes:', subThemesRes);
+        console.log('[Chronicles] Entries:', entriesRes);
 
         // Vérifier les erreurs
         if (sectionsRes.error) {
-          console.error('[Chronicles] Erreur sections:', sectionsRes.error);
+          console.error('[Chronicles] ERREUR sections:', sectionsRes.error);
+          alert('Erreur chargement sections: ' + sectionsRes.error.message);
         }
         if (subThemesRes.error) {
-          console.error('[Chronicles] Erreur subThemes:', subThemesRes.error);
+          console.error('[Chronicles] ERREUR subThemes:', subThemesRes.error);
         }
         if (entriesRes.error) {
-          console.error('[Chronicles] Erreur entries:', entriesRes.error);
+          console.error('[Chronicles] ERREUR entries:', entriesRes.error);
         }
 
-        const sections: ChronicleSection[] = sectionsRes.data?.map((row) => ({
+        // Mapping des données
+        const sections: ChronicleSection[] = (sectionsRes.data || []).map((row) => ({
           id: row.id,
           name: row.name,
           image: row.image,
-          order: row.order,
-          createdAt: row.created_at,
-        })) || [];
+          order: row.order ?? 0,
+          createdAt: row.created_at || new Date().toISOString(),
+        }));
 
-        const subThemes: ChronicleSubTheme[] = subThemesRes.data?.map((row) => ({
+        const subThemes: ChronicleSubTheme[] = (subThemesRes.data || []).map((row) => ({
           id: row.id,
           sectionId: row.section_id,
           name: row.name,
           image: row.image,
           description: row.description,
-          order: row.order,
-          createdAt: row.created_at,
-        })) || [];
+          order: row.order ?? 0,
+          createdAt: row.created_at || new Date().toISOString(),
+        }));
 
-        const entries: ChronicleEntry[] = entriesRes.data?.map((row) => ({
+        const entries: ChronicleEntry[] = (entriesRes.data || []).map((row) => ({
           id: row.id,
           subThemeId: row.subtheme_id,
           name: row.name,
@@ -1328,15 +1318,20 @@ export const useChroniclesStore = create<ChroniclesState>()(
           category: row.category,
           description: row.description,
           annexe: row.annexe,
-          order: row.order,
-          createdAt: row.created_at,
-        })) || [];
+          order: row.order ?? 0,
+          createdAt: row.created_at || new Date().toISOString(),
+        }));
 
-        console.log('[Chronicles] Données chargées:', { sections: sections.length, subThemes: subThemes.length, entries: entries.length });
+        console.log('[Chronicles] === DONNEES MAPPEES ===');
+        console.log('[Chronicles] Sections mappées:', sections.length, sections);
+        console.log('[Chronicles] SubThemes mappés:', subThemes.length);
+        console.log('[Chronicles] Entries mappées:', entries.length);
 
         set({ sections, subThemes, entries, loading: false, initialized: true });
+        console.log('[Chronicles] === STORE MIS A JOUR ===');
       } catch (error) {
-        console.error('[Chronicles] Error fetching chronicles:', error);
+        console.error('[Chronicles] EXCEPTION:', error);
+        alert('Exception chargement: ' + error);
         set({ loading: false, initialized: true });
       }
     },
