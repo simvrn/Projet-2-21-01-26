@@ -1265,6 +1265,7 @@ export const useChroniclesStore = create<ChroniclesState>()(
       if (get().initialized) return;
 
       set({ loading: true });
+      console.log('[Chronicles] Début du chargement...');
 
       try {
         // Charger les 3 en parallèle pour éliminer la latence
@@ -1273,6 +1274,33 @@ export const useChroniclesStore = create<ChroniclesState>()(
           supabase.from('chronicle_subthemes').select('*').order('order', { ascending: true }),
           supabase.from('chronicle_entries').select('*').order('order', { ascending: true }),
         ]);
+
+        // Log des résultats pour debug
+        console.log('[Chronicles] Sections response:', { data: sectionsRes.data?.length, error: sectionsRes.error });
+        console.log('[Chronicles] SubThemes response:', { data: subThemesRes.data?.length, error: subThemesRes.error });
+        console.log('[Chronicles] Entries response:', { data: entriesRes.data?.length, error: entriesRes.error });
+
+        // Log des données brutes pour debug
+        if (sectionsRes.data && sectionsRes.data.length > 0) {
+          console.log('[Chronicles] Premier section (raw):', sectionsRes.data[0]);
+        }
+        if (subThemesRes.data && subThemesRes.data.length > 0) {
+          console.log('[Chronicles] Premier subTheme (raw):', subThemesRes.data[0]);
+        }
+        if (entriesRes.data && entriesRes.data.length > 0) {
+          console.log('[Chronicles] Premier entry (raw):', entriesRes.data[0]);
+        }
+
+        // Vérifier les erreurs
+        if (sectionsRes.error) {
+          console.error('[Chronicles] Erreur sections:', sectionsRes.error);
+        }
+        if (subThemesRes.error) {
+          console.error('[Chronicles] Erreur subThemes:', subThemesRes.error);
+        }
+        if (entriesRes.error) {
+          console.error('[Chronicles] Erreur entries:', entriesRes.error);
+        }
 
         const sections: ChronicleSection[] = sectionsRes.data?.map((row) => ({
           id: row.id,
@@ -1304,9 +1332,11 @@ export const useChroniclesStore = create<ChroniclesState>()(
           createdAt: row.created_at,
         })) || [];
 
+        console.log('[Chronicles] Données chargées:', { sections: sections.length, subThemes: subThemes.length, entries: entries.length });
+
         set({ sections, subThemes, entries, loading: false, initialized: true });
       } catch (error) {
-        console.error('Error fetching chronicles:', error);
+        console.error('[Chronicles] Error fetching chronicles:', error);
         set({ loading: false, initialized: true });
       }
     },
