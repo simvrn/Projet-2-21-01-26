@@ -1266,11 +1266,11 @@ export const useChroniclesStore = create<ChroniclesState>()(
       console.log('[Chronicles] === FORCE FETCH SUPABASE ===');
 
       try {
-        // Charger les 3 en parallèle avec colonnes explicites (sans tri - "order" est mot réservé SQL)
+        // ULTRA SIMPLE - Sans la colonne "order" (mot réservé SQL)
         const [sectionsRes, subThemesRes, entriesRes] = await Promise.all([
-          supabase.from('chronicle_sections').select('id, name, image, order, created_at'),
-          supabase.from('chronicle_subthemes').select('id, section_id, name, image, description, order, created_at'),
-          supabase.from('chronicle_entries').select('id, subtheme_id, name, image, category, description, annexe, order, created_at'),
+          supabase.from('chronicle_sections').select('id, name, created_at'),
+          supabase.from('chronicle_subthemes').select('id, section_id, name, description, created_at'),
+          supabase.from('chronicle_entries').select('id, subtheme_id, name, category, description, annexe, created_at'),
         ]);
 
         // Log COMPLET des résultats
@@ -1291,34 +1291,34 @@ export const useChroniclesStore = create<ChroniclesState>()(
           console.error('[Chronicles] ERREUR entries:', entriesRes.error);
         }
 
-        // Mapping des données
-        const sections: ChronicleSection[] = (sectionsRes.data || []).map((row) => ({
+        // Mapping SIMPLE - sans order (mot réservé) et SANS image (trop lourd)
+        const sections: ChronicleSection[] = (sectionsRes.data || []).map((row, index) => ({
           id: row.id,
           name: row.name,
-          image: row.image,
-          order: row.order ?? 0,
+          image: undefined, // Non chargé pour éviter timeout
+          order: index, // Ordre par défaut = index
           createdAt: row.created_at || new Date().toISOString(),
         }));
 
-        const subThemes: ChronicleSubTheme[] = (subThemesRes.data || []).map((row) => ({
+        const subThemes: ChronicleSubTheme[] = (subThemesRes.data || []).map((row, index) => ({
           id: row.id,
           sectionId: row.section_id,
           name: row.name,
-          image: row.image,
+          image: undefined, // Non chargé pour éviter timeout
           description: row.description,
-          order: row.order ?? 0,
+          order: index,
           createdAt: row.created_at || new Date().toISOString(),
         }));
 
-        const entries: ChronicleEntry[] = (entriesRes.data || []).map((row) => ({
+        const entries: ChronicleEntry[] = (entriesRes.data || []).map((row, index) => ({
           id: row.id,
           subThemeId: row.subtheme_id,
           name: row.name,
-          image: row.image,
+          image: undefined, // Non chargé pour éviter timeout
           category: row.category,
           description: row.description,
           annexe: row.annexe,
-          order: row.order ?? 0,
+          order: index,
           createdAt: row.created_at || new Date().toISOString(),
         }));
 
