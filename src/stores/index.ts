@@ -1221,6 +1221,75 @@ export const useFinanceStore = create<FinanceState>()(
   )
 );
 
+// === HELPER: Upload image vers Supabase Storage ===
+async function uploadChronicleImage(
+  imageData: string | undefined,
+  folder: 'sections' | 'subthemes' | 'entries',
+  id: string
+): Promise<string | undefined> {
+  if (!imageData) return undefined;
+
+  // Si c'est déjà une URL Supabase Storage, on la garde telle quelle
+  if (imageData.startsWith('http')) {
+    return imageData;
+  }
+
+  // Si c'est du Base64, on l'upload
+  if (imageData.startsWith('data:image')) {
+    try {
+      // Extraire le type MIME et les données
+      const matches = imageData.match(/^data:image\/(\w+);base64,(.+)$/);
+      if (!matches) {
+        console.error('Format Base64 invalide');
+        return undefined;
+      }
+
+      const extension = matches[1]; // png, jpg, webp, etc.
+      const base64Data = matches[2];
+
+      // Convertir Base64 en Blob
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: `image/${extension}` });
+
+      // Nom de fichier unique
+      const fileName = `${folder}/${id}.${extension}`;
+
+      // Upload vers Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('chronicles')
+        .upload(fileName, blob, {
+          cacheControl: '3600',
+          upsert: true, // Remplace si existe déjà
+        });
+
+      if (uploadError) {
+        console.error('Erreur upload Storage:', uploadError);
+        alert(`Erreur upload image: ${uploadError.message}`);
+        return undefined;
+      }
+
+      // Récupérer l'URL publique
+      const { data: urlData } = supabase.storage
+        .from('chronicles')
+        .getPublicUrl(fileName);
+
+      console.log('[Storage] Image uploadée:', urlData.publicUrl);
+      return urlData.publicUrl;
+    } catch (err) {
+      console.error('Exception upload image:', err);
+      return undefined;
+    }
+  }
+
+  // Format non reconnu
+  return undefined;
+}
+
 // === CHRONICLES STORE (Structure hierarchique extensible avec Supabase) ===
 // IMPORTANT: Pas de persist pour éviter les conflits localStorage/Supabase
 interface ChroniclesState {
@@ -1266,11 +1335,11 @@ export const useChroniclesStore = create<ChroniclesState>()(
       console.log('[Chronicles] === FORCE FETCH SUPABASE ===');
 
       try {
-        // ULTRA SIMPLE - Sans la colonne "order" (mot réservé SQL)
+        // Chargement avec image (maintenant ce sont des URLs courtes, pas du Base64)
         const [sectionsRes, subThemesRes, entriesRes] = await Promise.all([
-          supabase.from('chronicle_sections').select('id, name, created_at'),
-          supabase.from('chronicle_subthemes').select('id, section_id, name, description, created_at'),
-          supabase.from('chronicle_entries').select('id, subtheme_id, name, category, description, annexe, created_at'),
+          supabase.from('chronicle_sections').select('id, name, image, created_at'),
+          supabase.from('chronicle_subthemes').select('id, section_id, name, image, description, created_at'),
+          supabase.from('chronicle_entries').select('id, subtheme_id, name, image, category, description, annexe, created_at'),
         ]);
 
         // Log COMPLET des résultats
@@ -1291,12 +1360,12 @@ export const useChroniclesStore = create<ChroniclesState>()(
           console.error('[Chronicles] ERREUR entries:', entriesRes.error);
         }
 
-        // Mapping SIMPLE - sans order (mot réservé) et SANS image (trop lourd)
+        // Mapping - image contient maintenant une URL (pas du Base64)
         const sections: ChronicleSection[] = (sectionsRes.data || []).map((row, index) => ({
           id: row.id,
           name: row.name,
-          image: undefined, // Non chargé pour éviter timeout
-          order: index, // Ordre par défaut = index
+          image: row.image, // URL Storage
+          order: index,
           createdAt: row.created_at || new Date().toISOString(),
         }));
 
@@ -1304,7 +1373,7 @@ export const useChroniclesStore = create<ChroniclesState>()(
           id: row.id,
           sectionId: row.section_id,
           name: row.name,
-          image: undefined, // Non chargé pour éviter timeout
+          image: row.image, // URL Storage
           description: row.description,
           order: index,
           createdAt: row.created_at || new Date().toISOString(),
@@ -1314,7 +1383,7 @@ export const useChroniclesStore = create<ChroniclesState>()(
           id: row.id,
           subThemeId: row.subtheme_id,
           name: row.name,
-          image: undefined, // Non chargé pour éviter timeout
+          image: row.image, // URL Storage
           category: row.category,
           description: row.description,
           annexe: row.annexe,
@@ -1343,15 +1412,19 @@ export const useChroniclesStore = create<ChroniclesState>()(
     },
 
     addSection: async (section) => {
+      // Upload image vers Storage si présente
+      const imageUrl = await uploadChronicleImage(section.image, 'sections', section.id);
+      const sectionWithUrl = { ...section, image: imageUrl };
+
       // Optimistic update
-      set((state) => ({ sections: [...state.sections, section] }));
+      set((state) => ({ sections: [...state.sections, sectionWithUrl] }));
 
       const { error } = await supabase.from('chronicle_sections').insert({
-        id: section.id,
-        name: section.name,
-        image: section.image,
-        order: section.order,
-        created_at: section.createdAt,
+        id: sectionWithUrl.id,
+        name: sectionWithUrl.name,
+        image: sectionWithUrl.image, // URL Storage (pas Base64)
+        order: sectionWithUrl.order,
+        created_at: sectionWithUrl.createdAt,
       });
 
       if (error) {
@@ -1366,15 +1439,22 @@ export const useChroniclesStore = create<ChroniclesState>()(
       // Sauvegarder l'état précédent pour rollback
       const previousSections = get().sections;
 
+      // Upload nouvelle image si présente (Base64 -> Storage)
+      let imageUrl = updates.image;
+      if (updates.image && updates.image.startsWith('data:image')) {
+        imageUrl = await uploadChronicleImage(updates.image, 'sections', id);
+      }
+      const finalUpdates = { ...updates, image: imageUrl };
+
       // Optimistic update
       set((state) => ({
-        sections: state.sections.map((s) => (s.id === id ? { ...s, ...updates } : s)),
+        sections: state.sections.map((s) => (s.id === id ? { ...s, ...finalUpdates } : s)),
       }));
 
       const dbUpdates: Record<string, unknown> = {};
-      if (updates.name !== undefined) dbUpdates.name = updates.name;
-      if (updates.image !== undefined) dbUpdates.image = updates.image;
-      if (updates.order !== undefined) dbUpdates.order = updates.order;
+      if (finalUpdates.name !== undefined) dbUpdates.name = finalUpdates.name;
+      if (finalUpdates.image !== undefined) dbUpdates.image = finalUpdates.image;
+      if (finalUpdates.order !== undefined) dbUpdates.order = finalUpdates.order;
 
       const { error } = await supabase.from('chronicle_sections').update(dbUpdates).eq('id', id);
       if (error) {
@@ -1449,17 +1529,21 @@ export const useChroniclesStore = create<ChroniclesState>()(
     },
 
     addSubTheme: async (subTheme) => {
+      // Upload image vers Storage si présente
+      const imageUrl = await uploadChronicleImage(subTheme.image, 'subthemes', subTheme.id);
+      const subThemeWithUrl = { ...subTheme, image: imageUrl };
+
       // Optimistic update
-      set((state) => ({ subThemes: [...state.subThemes, subTheme] }));
+      set((state) => ({ subThemes: [...state.subThemes, subThemeWithUrl] }));
 
       const { error } = await supabase.from('chronicle_subthemes').insert({
-        id: subTheme.id,
-        section_id: subTheme.sectionId,
-        name: subTheme.name,
-        image: subTheme.image,
-        description: subTheme.description,
-        order: subTheme.order,
-        created_at: subTheme.createdAt,
+        id: subThemeWithUrl.id,
+        section_id: subThemeWithUrl.sectionId,
+        name: subThemeWithUrl.name,
+        image: subThemeWithUrl.image, // URL Storage (pas Base64)
+        description: subThemeWithUrl.description,
+        order: subThemeWithUrl.order,
+        created_at: subThemeWithUrl.createdAt,
       });
 
       if (error) {
@@ -1474,17 +1558,24 @@ export const useChroniclesStore = create<ChroniclesState>()(
       // Sauvegarder l'état précédent pour rollback
       const previousSubThemes = get().subThemes;
 
+      // Upload nouvelle image si présente (Base64 -> Storage)
+      let imageUrl = updates.image;
+      if (updates.image && updates.image.startsWith('data:image')) {
+        imageUrl = await uploadChronicleImage(updates.image, 'subthemes', id);
+      }
+      const finalUpdates = { ...updates, image: imageUrl };
+
       // Optimistic update
       set((state) => ({
-        subThemes: state.subThemes.map((st) => (st.id === id ? { ...st, ...updates } : st)),
+        subThemes: state.subThemes.map((st) => (st.id === id ? { ...st, ...finalUpdates } : st)),
       }));
 
       const dbUpdates: Record<string, unknown> = {};
-      if (updates.sectionId !== undefined) dbUpdates.section_id = updates.sectionId;
-      if (updates.name !== undefined) dbUpdates.name = updates.name;
-      if (updates.image !== undefined) dbUpdates.image = updates.image;
-      if (updates.description !== undefined) dbUpdates.description = updates.description;
-      if (updates.order !== undefined) dbUpdates.order = updates.order;
+      if (finalUpdates.sectionId !== undefined) dbUpdates.section_id = finalUpdates.sectionId;
+      if (finalUpdates.name !== undefined) dbUpdates.name = finalUpdates.name;
+      if (finalUpdates.image !== undefined) dbUpdates.image = finalUpdates.image;
+      if (finalUpdates.description !== undefined) dbUpdates.description = finalUpdates.description;
+      if (finalUpdates.order !== undefined) dbUpdates.order = finalUpdates.order;
 
       const { error } = await supabase.from('chronicle_subthemes').update(dbUpdates).eq('id', id);
       if (error) {
@@ -1555,19 +1646,23 @@ export const useChroniclesStore = create<ChroniclesState>()(
     },
 
     addEntry: async (entry) => {
+      // Upload image vers Storage si présente
+      const imageUrl = await uploadChronicleImage(entry.image, 'entries', entry.id);
+      const entryWithUrl = { ...entry, image: imageUrl };
+
       // Optimistic update
-      set((state) => ({ entries: [...state.entries, entry] }));
+      set((state) => ({ entries: [...state.entries, entryWithUrl] }));
 
       const { error } = await supabase.from('chronicle_entries').insert({
-        id: entry.id,
-        subtheme_id: entry.subThemeId,
-        name: entry.name,
-        image: entry.image,
-        category: entry.category,
-        description: entry.description,
-        annexe: entry.annexe,
-        order: entry.order,
-        created_at: entry.createdAt,
+        id: entryWithUrl.id,
+        subtheme_id: entryWithUrl.subThemeId,
+        name: entryWithUrl.name,
+        image: entryWithUrl.image, // URL Storage (pas Base64)
+        category: entryWithUrl.category,
+        description: entryWithUrl.description,
+        annexe: entryWithUrl.annexe,
+        order: entryWithUrl.order,
+        created_at: entryWithUrl.createdAt,
       });
 
       if (error) {
@@ -1582,19 +1677,26 @@ export const useChroniclesStore = create<ChroniclesState>()(
       // Sauvegarder l'état précédent pour rollback
       const previousEntries = get().entries;
 
+      // Upload nouvelle image si présente (Base64 -> Storage)
+      let imageUrl = updates.image;
+      if (updates.image && updates.image.startsWith('data:image')) {
+        imageUrl = await uploadChronicleImage(updates.image, 'entries', id);
+      }
+      const finalUpdates = { ...updates, image: imageUrl };
+
       // Optimistic update
       set((state) => ({
-        entries: state.entries.map((e) => (e.id === id ? { ...e, ...updates } : e)),
+        entries: state.entries.map((e) => (e.id === id ? { ...e, ...finalUpdates } : e)),
       }));
 
       const dbUpdates: Record<string, unknown> = {};
-      if (updates.subThemeId !== undefined) dbUpdates.subtheme_id = updates.subThemeId;
-      if (updates.name !== undefined) dbUpdates.name = updates.name;
-      if (updates.image !== undefined) dbUpdates.image = updates.image;
-      if (updates.category !== undefined) dbUpdates.category = updates.category;
-      if (updates.description !== undefined) dbUpdates.description = updates.description;
-      if (updates.annexe !== undefined) dbUpdates.annexe = updates.annexe;
-      if (updates.order !== undefined) dbUpdates.order = updates.order;
+      if (finalUpdates.subThemeId !== undefined) dbUpdates.subtheme_id = finalUpdates.subThemeId;
+      if (finalUpdates.name !== undefined) dbUpdates.name = finalUpdates.name;
+      if (finalUpdates.image !== undefined) dbUpdates.image = finalUpdates.image;
+      if (finalUpdates.category !== undefined) dbUpdates.category = finalUpdates.category;
+      if (finalUpdates.description !== undefined) dbUpdates.description = finalUpdates.description;
+      if (finalUpdates.annexe !== undefined) dbUpdates.annexe = finalUpdates.annexe;
+      if (finalUpdates.order !== undefined) dbUpdates.order = finalUpdates.order;
 
       const { error } = await supabase.from('chronicle_entries').update(dbUpdates).eq('id', id);
       if (error) {
