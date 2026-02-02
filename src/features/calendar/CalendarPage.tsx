@@ -43,6 +43,10 @@ export function CalendarPage() {
   const [, setSelectedDate] = useState<Date | null>(null);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
 
+  // État pour le récap de journée
+  const [dayDetailDate, setDayDetailDate] = useState<Date | null>(null);
+  const [isDayDetailOpen, setIsDayDetailOpen] = useState(false);
+
   // Form state
   const [formTitle, setFormTitle] = useState('');
   const [formDescription, setFormDescription] = useState('');
@@ -93,6 +97,17 @@ export function CalendarPage() {
       setSelectedDate(date);
     }
     setIsModalOpen(true);
+  };
+
+  // Ouvrir le récap de la journée
+  const openDayDetail = (day: Date) => {
+    setDayDetailDate(day);
+    setIsDayDetailOpen(true);
+  };
+
+  const closeDayDetail = () => {
+    setIsDayDetailOpen(false);
+    setDayDetailDate(null);
   };
 
   const openEditModal = (event: CalendarEvent) => {
@@ -273,15 +288,20 @@ export function CalendarPage() {
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span
-                    className={`text-sm font-bold w-8 h-8 flex items-center justify-center rounded-full ${
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openDayDetail(day);
+                    }}
+                    className={`text-sm font-bold w-8 h-8 flex items-center justify-center rounded-full transition-all hover:scale-110 ${
                       isToday
-                        ? 'bg-red-500 text-white shadow-lg shadow-red-500/50'
-                        : 'text-dark-200'
+                        ? 'bg-red-500 text-white shadow-lg shadow-red-500/50 hover:bg-red-600'
+                        : 'text-dark-200 hover:bg-dark-600'
                     }`}
+                    title="Voir le récap de la journée"
                   >
                     {format(day, 'd')}
-                  </span>
+                  </button>
                 </div>
                 <div className="space-y-1">
                   {dayEvents.slice(0, view === 'week' ? 10 : 3).map((event) => {
@@ -470,6 +490,204 @@ export function CalendarPage() {
               {editingEvent ? 'Modifier' : 'Créer'}
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Modal Récap de la journée */}
+      <Modal
+        isOpen={isDayDetailOpen}
+        onClose={closeDayDetail}
+        title={dayDetailDate ? format(dayDetailDate, "EEEE d MMMM yyyy", { locale: fr }) : ''}
+      >
+        <div className="space-y-4">
+          {dayDetailDate && (() => {
+            const dayEvents = getEventsForDay(dayDetailDate);
+
+            // Séparer les événements par type
+            const tasks = dayEvents.filter(e => e.type === 'task');
+            const meetings = dayEvents.filter(e => e.type === 'meeting');
+            const otherEvents = dayEvents.filter(e => e.type === 'event');
+
+            // Trier par heure de début
+            const sortByTime = (a: CalendarEvent, b: CalendarEvent) => {
+              if (a.allDay && !b.allDay) return -1;
+              if (!a.allDay && b.allDay) return 1;
+              if (a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime);
+              return 0;
+            };
+
+            return (
+              <>
+                {dayEvents.length === 0 ? (
+                  <div className="text-center py-8">
+                    <CalendarIcon className="w-12 h-12 mx-auto text-dark-500 mb-3" />
+                    <p className="text-dark-400">Aucun événement ce jour</p>
+                    <Button
+                      className="mt-4"
+                      onClick={() => {
+                        closeDayDetail();
+                        openAddModal(dayDetailDate);
+                      }}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Ajouter un événement
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Tâches */}
+                    {tasks.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-medium text-dark-400 mb-2 flex items-center gap-2">
+                          <CheckSquare className="w-4 h-4" />
+                          Tâches ({tasks.length})
+                        </h3>
+                        <div className="space-y-2">
+                          {tasks.sort(sortByTime).map((event) => (
+                            <div
+                              key={event.id}
+                              onClick={() => {
+                                closeDayDetail();
+                                openEditModal(event);
+                              }}
+                              className={`p-3 rounded-lg cursor-pointer hover:opacity-80 transition-all flex items-center gap-3 ${
+                                event.completed ? 'opacity-50' : ''
+                              }`}
+                              style={{ backgroundColor: `${event.color}15`, borderLeft: `3px solid ${event.color}` }}
+                            >
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleTaskComplete(event.id);
+                                }}
+                                className="flex-shrink-0"
+                                style={{ color: event.color }}
+                              >
+                                {event.completed ? (
+                                  <Check className="w-5 h-5" />
+                                ) : (
+                                  <div className="w-5 h-5 border-2 rounded" style={{ borderColor: event.color }} />
+                                )}
+                              </button>
+                              <div className="flex-1 min-w-0">
+                                <p className={`font-medium text-dark-100 ${event.completed ? 'line-through' : ''}`}>
+                                  {event.title}
+                                </p>
+                                {event.description && (
+                                  <p className="text-sm text-dark-400 truncate">{event.description}</p>
+                                )}
+                              </div>
+                              {!event.allDay && event.startTime && (
+                                <span className="text-xs text-dark-400 flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {event.startTime}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Réunions */}
+                    {meetings.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-medium text-dark-400 mb-2 flex items-center gap-2">
+                          <Users className="w-4 h-4" />
+                          Réunions ({meetings.length})
+                        </h3>
+                        <div className="space-y-2">
+                          {meetings.sort(sortByTime).map((event) => (
+                            <div
+                              key={event.id}
+                              onClick={() => {
+                                closeDayDetail();
+                                openEditModal(event);
+                              }}
+                              className="p-3 rounded-lg cursor-pointer hover:opacity-80 transition-all"
+                              style={{ backgroundColor: `${event.color}15`, borderLeft: `3px solid ${event.color}` }}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-dark-100">{event.title}</p>
+                                  {event.description && (
+                                    <p className="text-sm text-dark-400 truncate">{event.description}</p>
+                                  )}
+                                </div>
+                                {!event.allDay && event.startTime && (
+                                  <span className="text-xs text-dark-400 flex items-center gap-1 flex-shrink-0">
+                                    <Clock className="w-3 h-3" />
+                                    {event.startTime}
+                                    {event.endTime && ` - ${event.endTime}`}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Événements */}
+                    {otherEvents.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-medium text-dark-400 mb-2 flex items-center gap-2">
+                          <CalendarIcon className="w-4 h-4" />
+                          Événements ({otherEvents.length})
+                        </h3>
+                        <div className="space-y-2">
+                          {otherEvents.sort(sortByTime).map((event) => (
+                            <div
+                              key={event.id}
+                              onClick={() => {
+                                closeDayDetail();
+                                openEditModal(event);
+                              }}
+                              className="p-3 rounded-lg cursor-pointer hover:opacity-80 transition-all"
+                              style={{ backgroundColor: `${event.color}15`, borderLeft: `3px solid ${event.color}` }}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-dark-100">{event.title}</p>
+                                  {event.description && (
+                                    <p className="text-sm text-dark-400 truncate">{event.description}</p>
+                                  )}
+                                </div>
+                                {!event.allDay && event.startTime && (
+                                  <span className="text-xs text-dark-400 flex items-center gap-1 flex-shrink-0">
+                                    <Clock className="w-3 h-3" />
+                                    {event.startTime}
+                                    {event.endTime && ` - ${event.endTime}`}
+                                  </span>
+                                )}
+                                {event.allDay && (
+                                  <span className="text-xs text-dark-400">Toute la journée</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Bouton ajouter */}
+                    <div className="pt-4 border-t border-dark-700">
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          closeDayDetail();
+                          openAddModal(dayDetailDate);
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Ajouter un événement
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </>
+            );
+          })()}
         </div>
       </Modal>
     </div>
