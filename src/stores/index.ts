@@ -1335,11 +1335,11 @@ export const useChroniclesStore = create<ChroniclesState>()(
       console.log('[Chronicles] === FORCE FETCH SUPABASE ===');
 
       try {
-        // Chargement avec image (maintenant ce sont des URLs courtes, pas du Base64)
+        // Chargement avec image (URLs) et tri par order
         const [sectionsRes, subThemesRes, entriesRes] = await Promise.all([
-          supabase.from('chronicle_sections').select('id, name, image, created_at'),
-          supabase.from('chronicle_subthemes').select('id, section_id, name, image, description, created_at'),
-          supabase.from('chronicle_entries').select('id, subtheme_id, name, image, category, description, annexe, created_at'),
+          supabase.from('chronicle_sections').select('id, name, image, "order", created_at').order('order', { ascending: true }),
+          supabase.from('chronicle_subthemes').select('id, section_id, name, image, description, "order", created_at').order('order', { ascending: true }),
+          supabase.from('chronicle_entries').select('id, subtheme_id, name, image, category, description, annexe, "order", created_at').order('order', { ascending: true }),
         ]);
 
         // Log COMPLET des résultats
@@ -1360,12 +1360,12 @@ export const useChroniclesStore = create<ChroniclesState>()(
           console.error('[Chronicles] ERREUR entries:', entriesRes.error);
         }
 
-        // Mapping - image contient maintenant une URL (pas du Base64)
+        // Mapping - image = URL Storage, order = depuis la BDD
         const sections: ChronicleSection[] = (sectionsRes.data || []).map((row, index) => ({
           id: row.id,
           name: row.name,
-          image: row.image, // URL Storage
-          order: index,
+          image: row.image,
+          order: row.order ?? index, // Utilise order de la BDD, sinon index comme fallback
           createdAt: row.created_at || new Date().toISOString(),
         }));
 
@@ -1373,9 +1373,9 @@ export const useChroniclesStore = create<ChroniclesState>()(
           id: row.id,
           sectionId: row.section_id,
           name: row.name,
-          image: row.image, // URL Storage
+          image: row.image,
           description: row.description,
-          order: index,
+          order: row.order ?? index,
           createdAt: row.created_at || new Date().toISOString(),
         }));
 
@@ -1383,11 +1383,11 @@ export const useChroniclesStore = create<ChroniclesState>()(
           id: row.id,
           subThemeId: row.subtheme_id,
           name: row.name,
-          image: row.image, // URL Storage
+          image: row.image,
           category: row.category,
           description: row.description,
           annexe: row.annexe,
-          order: index,
+          order: row.order ?? index,
           createdAt: row.created_at || new Date().toISOString(),
         }));
 
