@@ -1493,6 +1493,7 @@ export const useChroniclesStore = create<ChroniclesState>()(
     },
 
     reorderSections: async (orderedIds: string[]) => {
+      console.log('reorderSections appelé avec:', orderedIds);
       // Sauvegarder l'état précédent pour rollback
       const previousSections = get().sections;
 
@@ -1519,6 +1520,8 @@ export const useChroniclesStore = create<ChroniclesState>()(
         console.error('Supabase error (reorderSections)');
         // Rollback
         set({ sections: previousSections });
+      } else {
+        console.log('Ordre sauvegardé dans Supabase (sections)', orderedIds);
       }
     },
 
@@ -1609,6 +1612,7 @@ export const useChroniclesStore = create<ChroniclesState>()(
     },
 
     reorderSubThemes: async (sectionId: string, orderedIds: string[]) => {
+      console.log('reorderSubThemes appelé avec:', sectionId, orderedIds);
       // Sauvegarder l'état précédent pour rollback
       const previousSubThemes = get().subThemes;
 
@@ -1636,6 +1640,8 @@ export const useChroniclesStore = create<ChroniclesState>()(
         console.error('Supabase error (reorderSubThemes)');
         // Rollback
         set({ subThemes: previousSubThemes });
+      } else {
+        console.log('Ordre sauvegardé dans Supabase (subThemes)', orderedIds);
       }
     },
 
@@ -1724,6 +1730,7 @@ export const useChroniclesStore = create<ChroniclesState>()(
     },
 
     reorderEntries: async (subThemeId: string, orderedIds: string[]) => {
+      console.log('reorderEntries appelé avec:', subThemeId, orderedIds);
       // Sauvegarder l'état précédent pour rollback
       const previousEntries = get().entries;
 
@@ -1751,6 +1758,8 @@ export const useChroniclesStore = create<ChroniclesState>()(
         console.error('Supabase error (reorderEntries)');
         // Rollback
         set({ entries: previousEntries });
+      } else {
+        console.log('Ordre sauvegardé dans Supabase (entries)', orderedIds);
       }
     },
   })
