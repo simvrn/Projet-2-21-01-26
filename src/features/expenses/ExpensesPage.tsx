@@ -7,12 +7,13 @@ import { fr } from 'date-fns/locale';
 import { ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
 
 export function ExpensesPage() {
-  const { expenses, incomes, categories, fetchExpenses, fetchIncomes } = useExpensesStore();
+  const { expenses, incomes, categories, fetchExpenses, fetchIncomes, fetchCategories } = useExpensesStore();
 
   useEffect(() => {
     fetchExpenses();
     fetchIncomes();
-  }, [fetchExpenses, fetchIncomes]);
+    fetchCategories();
+  }, [fetchExpenses, fetchIncomes, fetchCategories]);
 
   const currentYear = new Date().getFullYear();
   const months = eachMonthOfInterval({

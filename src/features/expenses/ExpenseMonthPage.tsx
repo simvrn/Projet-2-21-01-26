@@ -19,13 +19,14 @@ export function ExpenseMonthPage() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#06b6d4');
 
-  const { expenses, incomes, categories, addExpense, removeExpense, addIncome, removeIncome, addCategory, fetchExpenses, fetchIncomes } =
+  const { expenses, incomes, categories, addExpense, removeExpense, addIncome, removeIncome, addCategory, fetchExpenses, fetchIncomes, fetchCategories } =
     useExpensesStore();
 
   useEffect(() => {
     fetchExpenses();
     fetchIncomes();
-  }, [fetchExpenses, fetchIncomes]);
+    fetchCategories();
+  }, [fetchExpenses, fetchIncomes, fetchCategories]);
 
   if (!month) return null;
 
@@ -49,9 +50,14 @@ export function ExpenseMonthPage() {
   const handleAddExpense = () => {
     if (!newExpenseAmount || !newExpenseCategory) return;
 
+    // Toujours utiliser le mois de la page sélectionnée
+    const expenseDate = `${month}-15`; // Milieu du mois pour être sûr
+
+    console.log('Ajout dépense - Mois page:', month, '- Date utilisée:', expenseDate);
+
     addExpense({
       id: crypto.randomUUID(),
-      date: format(new Date(), 'yyyy-MM-dd'),
+      date: expenseDate,
       categoryId: newExpenseCategory,
       amount: Math.round(parseFloat(newExpenseAmount) * 100),
       description: newExpenseDescription || undefined,

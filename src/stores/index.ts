@@ -247,18 +247,19 @@ interface ExpensesState {
   loading: boolean;
   fetchExpenses: () => Promise<void>;
   fetchIncomes: () => Promise<void>;
+  fetchCategories: () => Promise<void>;
   addExpense: (expense: Expense) => Promise<void>;
   removeExpense: (id: string) => Promise<void>;
   addIncome: (income: Income) => Promise<void>;
   removeIncome: (id: string) => Promise<void>;
   updateIncome: (id: string, updates: Partial<Income>) => Promise<void>;
-  addCategory: (category: ExpenseCategory) => void;
-  removeCategory: (id: string) => void;
+  addCategory: (category: ExpenseCategory) => Promise<void>;
+  removeCategory: (id: string) => Promise<void>;
 }
 
 export const useExpensesStore = create<ExpensesState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       expenses: [],
       incomes: [],
       loading: false,
@@ -310,15 +311,25 @@ export const useExpensesStore = create<ExpensesState>()(
       },
 
       addExpense: async (expense) => {
-        const { error } = await supabase.from('expenses').insert({
+        console.log('=== STORE addExpense ===');
+        console.log('Date reçue:', expense.date);
+        console.log('Expense complet:', expense);
+
+        const { error, data } = await supabase.from('expenses').insert({
           id: expense.id,
           date: expense.date,
           category_id: expense.categoryId,
           amount: expense.amount,
           description: expense.description,
-        });
+        }).select();
+
+        console.log('Réponse Supabase:', { error, data });
+
         if (!error) {
           set((state) => ({ expenses: [...state.expenses, expense] }));
+          console.log('Expense ajouté avec succès, date:', expense.date);
+        } else {
+          console.error('Erreur Supabase:', error);
         }
       },
 
@@ -371,12 +382,61 @@ export const useExpensesStore = create<ExpensesState>()(
         }
       },
 
-      addCategory: (category) =>
-        set((state) => ({ categories: [...state.categories, category] })),
-      removeCategory: (id) =>
+      fetchCategories: async () => {
+        const { data, error } = await supabase
+          .from('expense_categories')
+          .select('*')
+          .order('name', { ascending: true });
+        if (!error && data) {
+          const categories: ExpenseCategory[] = data.map((row) => ({
+            id: row.id,
+            name: row.name,
+            color: row.color,
+          }));
+          // Garder les catégories par défaut si aucune en base
+          if (categories.length > 0) {
+            set({ categories });
+          }
+        }
+      },
+
+      addCategory: async (category) => {
+        // Optimistic update
+        set((state) => ({ categories: [...state.categories, category] }));
+
+        const { error } = await supabase.from('expense_categories').insert({
+          id: category.id,
+          name: category.name,
+          color: category.color,
+        });
+
+        if (error) {
+          console.error('Error adding category:', error);
+          // Rollback
+          set((state) => ({
+            categories: state.categories.filter((c) => c.id !== category.id),
+          }));
+          alert(`Erreur ajout catégorie: ${error.message}`);
+        } else {
+          console.log('Catégorie sauvegardée dans Supabase:', category.name);
+        }
+      },
+
+      removeCategory: async (id) => {
+        const previousCategories = get().categories;
+
+        // Optimistic update
         set((state) => ({
           categories: state.categories.filter((c) => c.id !== id),
-        })),
+        }));
+
+        const { error } = await supabase.from('expense_categories').delete().eq('id', id);
+        if (error) {
+          console.error('Error removing category:', error);
+          // Rollback
+          set({ categories: previousCategories });
+        }
+      },
     }),
     { name: 'expenses-storage' }
   )
